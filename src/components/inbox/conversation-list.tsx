@@ -474,8 +474,22 @@ function ConversationItem({
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium text-foreground">
-            {displayName}
+          <span className="flex min-w-0 items-center gap-1.5">
+            {/* lucide-react dropped brand/logo icons — a small text
+             *  badge is a lighter dependency than pulling in a
+             *  separate icon set for two glyphs. */}
+            {conversation.channel === "instagram" ? (
+              <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-semibold text-muted-foreground">
+                IG
+              </span>
+            ) : conversation.channel === "messenger" ? (
+              <span className="shrink-0 rounded bg-muted px-1 text-[9px] font-semibold text-muted-foreground">
+                FB
+              </span>
+            ) : null}
+            <span className="truncate text-sm font-medium text-foreground">
+              {displayName}
+            </span>
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
         </div>

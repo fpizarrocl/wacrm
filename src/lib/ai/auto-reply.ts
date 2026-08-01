@@ -9,6 +9,8 @@ import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { loadAiTools } from './load-tools'
 import { engineSendText } from '@/lib/flows/meta-send'
+import { sendSocialReplyText } from '@/lib/social/reply'
+import type { SocialChannel } from '@/lib/social/inbound'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 
@@ -77,7 +79,7 @@ export async function dispatchInboundToAiReply(
 
     const { data: conv, error: convErr } = await db
       .from('conversations')
-      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
+      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count, channel')
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr || !conv) return
@@ -86,6 +88,31 @@ export async function dispatchInboundToAiReply(
     // Cheap early-out; the authoritative cap check is the atomic claim
     // below (this read can race a concurrent inbound).
     if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
+
+    // WhatsApp keeps its existing send path (phone-variant retry,
+    // template plumbing via engineSendText). Instagram/Messenger
+    // (migration 046) route through the Send API instead — no phone,
+    // no templates, just the IGSID/PSID captured on the way in.
+    const channel = (conv.channel ?? 'whatsapp') as SocialChannel | 'whatsapp'
+    const sendReply = (text: string) =>
+      channel === 'whatsapp'
+        ? engineSendText({
+            accountId,
+            userId: configOwnerUserId,
+            conversationId,
+            contactId,
+            text,
+            aiGenerated: true,
+          })
+        : sendSocialReplyText({
+            accountId,
+            conversationId,
+            contactId,
+            channel,
+            text,
+            senderType: 'bot',
+            aiGenerated: true,
+          })
 
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
@@ -185,14 +212,7 @@ export async function dispatchInboundToAiReply(
       // which notifies the agent; the shared-queue case is notified
       // separately by the `ai_handoff_summary` trigger.
       if (text) {
-        await engineSendText({
-          accountId,
-          userId: configOwnerUserId,
-          conversationId,
-          contactId,
-          text,
-          aiGenerated: true,
-        })
+        await sendReply(text)
       }
 
       const summary = buildHandoffSummary({
@@ -234,14 +254,7 @@ export async function dispatchInboundToAiReply(
     }
     if (claimed !== true) return // lost the per-conversation cap race
 
-    await engineSendText({
-      accountId,
-      userId: configOwnerUserId,
-      conversationId,
-      contactId,
-      text,
-      aiGenerated: true,
-    })
+    await sendReply(text)
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
   }

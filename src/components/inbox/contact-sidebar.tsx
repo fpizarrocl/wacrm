@@ -127,7 +127,7 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     );
   }
 
-  const displayName = contact.name || contact.phone;
+  const displayName = contact.name || contact.phone || contact.external_id || "?";
   const initials = displayName.charAt(0).toUpperCase();
 
   return (

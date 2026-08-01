@@ -36,6 +36,8 @@ import {
 } from '@/lib/whatsapp/interactive';
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption';
 import { supabaseAdmin } from '@/lib/flows/admin-client';
+import { sendSocialReplyText } from '@/lib/social/reply';
+import type { SocialChannel } from '@/lib/social/inbound';
 import {
   sanitizePhoneForMeta,
   isValidE164,
@@ -230,6 +232,29 @@ export async function sendMessageToConversation(
   }
 
   const contact = conversation.contact;
+
+  // Instagram/Messenger (migration 046) — v1 scope is text-only, sent
+  // through the Send API instead of the WhatsApp-specific plumbing
+  // below (no phone, no templates, no interactive messages yet).
+  if (conversation.channel && conversation.channel !== 'whatsapp') {
+    if (messageType !== 'text' || !contentText) {
+      throw new SendMessageError(
+        'bad_request',
+        'Only text messages are supported on Instagram/Messenger for now',
+        400
+      );
+    }
+    const result = await sendSocialReplyText({
+      accountId,
+      conversationId,
+      contactId: contact.id,
+      channel: conversation.channel as SocialChannel,
+      text: contentText,
+      senderType: 'agent',
+    });
+    return { messageId: result.id, whatsappMessageId: result.message_id };
+  }
+
   if (!contact?.phone) {
     throw new SendMessageError(
       'bad_request',
