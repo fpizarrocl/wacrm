@@ -2,42 +2,141 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Bot, RotateCcw, Send, Loader2, UserCircle2, ArrowRight } from 'lucide-react';
+import { Bot, RotateCcw, Send, Loader2, UserCircle2, ArrowRight, Paperclip, Mic, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+
+interface Attachment {
+  kind: 'image' | 'audio';
+  mimeType: string;
+  /** base64, no `data:` prefix. */
+  data: string;
+  name: string;
+  /** Local object URL for rendering the thumbnail/player — never sent
+   *  to the server, revoked once no longer shown. */
+  previewUrl: string;
+}
 
 interface Turn {
   role: 'user' | 'assistant';
   content: string;
+  attachment?: Attachment;
   /** assistant-only: the agent signalled a human handoff on this turn. */
   handoff?: boolean;
+}
+
+/** 5 MB — mirrors MAX_IMAGE_BYTES in src/lib/ai/media.ts and Whisper's
+ *  own file-size ceiling, so an oversized pick fails fast client-side
+ *  instead of a wasted round-trip. */
+const MAX_ATTACHMENT_BYTES = 5_000_000;
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // "data:<mime>;base64,<data>" — keep just the payload.
+      resolve(result.slice(result.indexOf(',') + 1));
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [turns, sending]);
 
+  // Revoke the object URL when it's replaced/cleared so we don't leak
+  // one per attachment picked during the session.
+  useEffect(() => {
+    return () => {
+      if (attachment) URL.revokeObjectURL(attachment.previewUrl);
+    };
+  }, [attachment]);
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const kind = file.type.startsWith('image/')
+      ? 'image'
+      : file.type.startsWith('audio/')
+        ? 'audio'
+        : null;
+    if (!kind) {
+      toast.error('Attach an image or an audio file (voice note).');
+      return;
+    }
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      toast.error('That file is too large — 5 MB max, same as WhatsApp.');
+      return;
+    }
+
+    try {
+      const data = await readFileAsBase64(file);
+      if (attachment) URL.revokeObjectURL(attachment.previewUrl);
+      setAttachment({
+        kind,
+        mimeType: file.type,
+        data,
+        name: file.name,
+        previewUrl: URL.createObjectURL(file),
+      });
+    } catch {
+      toast.error('Could not read that file.');
+    }
+  };
+
+  const removeAttachment = () => {
+    if (attachment) URL.revokeObjectURL(attachment.previewUrl);
+    setAttachment(null);
+  };
+
   const send = async () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if ((!text && !attachment) || sending) return;
 
-    const next: Turn[] = [...turns, { role: 'user', content: text }];
+    const pendingAttachment = attachment;
+    const userTurn: Turn = {
+      role: 'user',
+      content: text || (pendingAttachment?.kind === 'image' ? '📷 Photo' : '🎤 Voice note'),
+      attachment: pendingAttachment ?? undefined,
+    };
+    const next: Turn[] = [...turns, userTurn];
     setTurns(next);
     setInput('');
+    setAttachment(null);
     setSending(true);
     try {
       const res = await fetch('/api/ai/playground', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Send only role+content — the server ignores anything else.
+        // Send only role+content(+attachment on the turn that has one) —
+        // the server ignores anything else.
         body: JSON.stringify({
-          messages: next.map((t) => ({ role: t.role, content: t.content })),
+          messages: next.map((t) => ({
+            role: t.role,
+            content: t.content,
+            ...(t.attachment
+              ? {
+                  attachment: {
+                    kind: t.attachment.kind,
+                    mimeType: t.attachment.mimeType,
+                    data: t.attachment.data,
+                  },
+                }
+              : {}),
+          })),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -50,6 +149,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         // Roll the unsent user turn back so the transcript stays clean.
         setTurns(turns);
         setInput(text);
+        setAttachment(pendingAttachment);
         return;
       }
       setTurns([
@@ -67,6 +167,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       toast.error("Couldn't reach the agent.");
       setTurns(turns);
       setInput(text);
+      setAttachment(pendingAttachment);
     } finally {
       setSending(false);
     }
@@ -93,7 +194,10 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setTurns([])}
+          onClick={() => {
+            setTurns([]);
+            removeAttachment();
+          }}
           disabled={turns.length === 0 || sending}
           className="text-muted-foreground"
         >
@@ -109,7 +213,8 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
             <p>Send a message to see how your agent would reply.</p>
             <p className="mt-1 text-xs">
               It uses your knowledge base and behaves exactly like the
-              auto-reply bot — including handoff.
+              auto-reply bot — including handoff. Attach a photo or a
+              voice note to test how it handles those too.
             </p>
             {onGoToSetup && (
               <Button
@@ -143,6 +248,17 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
                   : 'rounded-bl-sm bg-muted text-foreground',
               )}
             >
+              {t.attachment?.kind === 'image' && (
+                // eslint-disable-next-line @next/next/no-img-element -- local object URL preview, not a remote asset
+                <img
+                  src={t.attachment.previewUrl}
+                  alt={t.attachment.name}
+                  className="mb-1.5 max-h-48 rounded-lg object-cover"
+                />
+              )}
+              {t.attachment?.kind === 'audio' && (
+                <audio controls src={t.attachment.previewUrl} className="mb-1.5 h-8 max-w-56" />
+              )}
               {t.content && <p className="whitespace-pre-wrap">{t.content}</p>}
               {t.role === 'assistant' && t.handoff && (
                 <p
@@ -170,8 +286,49 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         )}
       </div>
 
+      {/* Pending attachment preview */}
+      {attachment && (
+        <div className="flex items-center gap-2 border-t border-border px-3 pt-3">
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs text-foreground">
+            {attachment.kind === 'image' ? (
+              // eslint-disable-next-line @next/next/no-img-element -- local object URL preview, not a remote asset
+              <img src={attachment.previewUrl} alt={attachment.name} className="h-8 w-8 rounded object-cover" />
+            ) : (
+              <Mic className="h-4 w-4 text-muted-foreground" />
+            )}
+            <span className="max-w-40 truncate">{attachment.name}</span>
+            <button
+              type="button"
+              onClick={removeAttachment}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Composer */}
       <div className="flex items-end gap-2 border-t border-border p-3">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,audio/*"
+          className="hidden"
+          onChange={onPickFile}
+          disabled={sending}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={sending}
+          className="h-9 w-9 shrink-0 p-0"
+          title="Attach a photo or voice note"
+        >
+          <Paperclip className="h-4 w-4" />
+        </Button>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -183,7 +340,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         <Button
           size="sm"
           onClick={send}
-          disabled={!input.trim() || sending}
+          disabled={(!input.trim() && !attachment) || sending}
           className="h-9 w-9 shrink-0 p-0"
         >
           {sending ? (

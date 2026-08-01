@@ -7,10 +7,29 @@ import { loadAiTools } from '@/lib/ai/load-tools'
 import { generateReply } from '@/lib/ai/generate'
 import { buildSystemPrompt } from '@/lib/ai/defaults'
 import { latestUserMessage } from '@/lib/ai/query'
-import { AiError, type ChatMessage } from '@/lib/ai/types'
+import { transcribeAudio } from '@/lib/ai/transcribe'
+import { AiError, type ChatMessage, type ContentPart } from '@/lib/ai/types'
 
 // Keep the tested transcript bounded, mirroring the live context window.
 const MAX_TURNS = 20
+
+// Same ceiling as MAX_IMAGE_BYTES in src/lib/ai/media.ts / Whisper's own
+// file-size cap — the client already blocks bigger picks, this is the
+// server-side backstop.
+const MAX_ATTACHMENT_BYTES = 5_000_000
+
+interface RawAttachment {
+  kind: 'image' | 'audio'
+  mimeType: string
+  /** base64, no `data:` prefix. */
+  data: string
+}
+
+interface RawTurn {
+  role: 'user' | 'assistant'
+  content: string
+  attachment?: RawAttachment
+}
 
 /**
  * POST /api/ai/playground  (agent+)
@@ -35,19 +54,39 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'messages is required' }, { status: 400 })
     }
 
-    // Playground input is a plain text box — messages are always
-    // plain-string turns, never the ContentPart[] shape used for
-    // inlined images (that only ever comes from buildConversationContext
-    // reading real inbound messages).
-    const messages: ChatMessage[] = rawMessages
-      .filter((m: unknown): m is { role: 'user' | 'assistant'; content: string } => {
+    // Playground input is a text box + an optional attach button — a
+    // turn is valid with just an attachment (no typed caption), so the
+    // content-required check below only applies when there's no attachment.
+    const rawTurns: RawTurn[] = rawMessages
+      .filter((m: unknown): m is RawTurn => {
         if (!m || typeof m !== 'object') return false
-        const { role, content } = m as { role?: unknown; content?: unknown }
-        return (role === 'user' || role === 'assistant') && typeof content === 'string' && content.trim().length > 0
+        const { role, content, attachment } = m as {
+          role?: unknown
+          content?: unknown
+          attachment?: unknown
+        }
+        if (role !== 'user' && role !== 'assistant') return false
+        if (typeof content !== 'string') return false
+        if (attachment !== undefined) {
+          if (!attachment || typeof attachment !== 'object') return false
+          const a = attachment as { kind?: unknown; mimeType?: unknown; data?: unknown }
+          if (
+            (a.kind !== 'image' && a.kind !== 'audio') ||
+            typeof a.mimeType !== 'string' ||
+            typeof a.data !== 'string'
+          ) {
+            return false
+          }
+          // Base64 inflates by ~4/3 — this is an approximation, good
+          // enough as a sanity backstop.
+          if (a.data.length > MAX_ATTACHMENT_BYTES * 1.4) return false
+          return true
+        }
+        return content.trim().length > 0
       })
       .slice(-MAX_TURNS)
 
-    if (messages.length === 0) {
+    if (rawTurns.length === 0) {
       return NextResponse.json(
         { error: 'Send a message to test the agent.' },
         { status: 400 },
@@ -71,6 +110,46 @@ export async function POST(request: Request) {
         },
         { status: 400 },
       )
+    }
+
+    // Resolve attachments now that we have config.embeddingsApiKey (the
+    // same OpenAI-only key already used for KB embeddings, reused here
+    // for Whisper transcription — see src/lib/ai/transcribe.ts). Image
+    // turns become a ContentPart[] (text + inline base64) for the
+    // providers' vision input; audio turns are transcribed to plain
+    // text so they flow through the rest of the pipeline unchanged —
+    // Claude has no audio-input API, so transcription is the one
+    // approach that works the same for every provider.
+    const messages: ChatMessage[] = []
+    for (const t of rawTurns) {
+      if (!t.attachment) {
+        messages.push({ role: t.role, content: t.content })
+        continue
+      }
+      if (t.attachment.kind === 'image') {
+        const parts: ContentPart[] = [
+          { type: 'image', mimeType: t.attachment.mimeType, data: t.attachment.data },
+        ]
+        if (t.content.trim()) parts.unshift({ type: 'text', text: t.content.trim() })
+        messages.push({ role: t.role, content: parts })
+        continue
+      }
+      // audio
+      if (!config.embeddingsApiKey) {
+        messages.push({ role: t.role, content: '[Nota de voz — configura una clave de OpenAI en "Clave de embeddings" para transcribirla]' })
+        continue
+      }
+      try {
+        const transcript = await transcribeAudio(
+          config.embeddingsApiKey,
+          Buffer.from(t.attachment.data, 'base64'),
+          t.attachment.mimeType,
+        )
+        messages.push({ role: t.role, content: transcript })
+      } catch (err) {
+        console.error('[ai/playground] audio transcription failed:', err)
+        messages.push({ role: t.role, content: '[Nota de voz — no se pudo transcribir]' })
+      }
     }
 
     const knowledge = await retrieveKnowledge(
