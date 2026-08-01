@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Bot, RotateCcw, Send, Loader2, UserCircle2, ArrowRight, Paperclip, Mic, X } from 'lucide-react';
+import { Bot, RotateCcw, Send, Loader2, UserCircle2, ArrowRight, Paperclip, Mic, Square, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -30,7 +30,7 @@ interface Turn {
  *  instead of a wasted round-trip. */
 const MAX_ATTACHMENT_BYTES = 5_000_000;
 
-function readFileAsBase64(file: File): Promise<string> {
+function readBlobAsBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -39,8 +39,14 @@ function readFileAsBase64(file: File): Promise<string> {
       resolve(result.slice(result.indexOf(',') + 1));
     };
     reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(blob);
   });
+}
+
+function formatRecordingTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
@@ -48,8 +54,13 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
   const [input, setInput] = useState('');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [sending, setSending] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -83,7 +94,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
     }
 
     try {
-      const data = await readFileAsBase64(file);
+      const data = await readBlobAsBase64(file);
       if (attachment) URL.revokeObjectURL(attachment.previewUrl);
       setAttachment({
         kind,
@@ -101,6 +112,70 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
     if (attachment) URL.revokeObjectURL(attachment.previewUrl);
     setAttachment(null);
   };
+
+  const stopRecordingTimer = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const startRecording = async () => {
+    if (recording) return;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      toast.error('Could not access the microphone — check your browser permissions.');
+      return;
+    }
+
+    // Let the browser pick a mimeType it can actually record (varies by
+    // browser — Chrome/Firefox default to webm, Safari to mp4); we send
+    // whatever it reports back so Whisper gets an accurate content type.
+    const recorder = new MediaRecorder(stream);
+    recordedChunksRef.current = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+    };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      stopRecordingTimer();
+      const blob = new Blob(recordedChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+      try {
+        const data = await readBlobAsBase64(blob);
+        if (attachment) URL.revokeObjectURL(attachment.previewUrl);
+        setAttachment({
+          kind: 'audio',
+          mimeType: recorder.mimeType || 'audio/webm',
+          data,
+          name: 'Voice note',
+          previewUrl: URL.createObjectURL(blob),
+        });
+      } catch {
+        toast.error('Could not read the recording.');
+      }
+    };
+
+    mediaRecorderRef.current = recorder;
+    recorder.start();
+    setRecording(true);
+    setRecordingSeconds(0);
+    recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    mediaRecorderRef.current = null;
+    setRecording(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopRecordingTimer();
+      mediaRecorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   const send = async () => {
     const text = input.trim();
@@ -316,31 +391,49 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
           accept="image/*,audio/*"
           className="hidden"
           onChange={onPickFile}
-          disabled={sending}
+          disabled={sending || recording}
         />
         <Button
           type="button"
           variant="outline"
           size="sm"
           onClick={() => fileInputRef.current?.click()}
-          disabled={sending}
+          disabled={sending || recording}
           className="h-9 w-9 shrink-0 p-0"
-          title="Attach a photo or voice note"
+          title="Attach a photo or an audio file"
         >
           <Paperclip className="h-4 w-4" />
         </Button>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a customer message…"
-          rows={1}
-          className="flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
-        />
+        <Button
+          type="button"
+          variant={recording ? 'destructive' : 'outline'}
+          size="sm"
+          onClick={() => (recording ? stopRecording() : void startRecording())}
+          disabled={sending}
+          className="h-9 w-9 shrink-0 p-0"
+          title={recording ? 'Stop recording' : 'Record a voice note'}
+        >
+          {recording ? <Square className="h-3.5 w-3.5 fill-current" /> : <Mic className="h-4 w-4" />}
+        </Button>
+        {recording ? (
+          <div className="flex flex-1 items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
+            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-destructive" />
+            Recording… {formatRecordingTime(recordingSeconds)}
+          </div>
+        ) : (
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type a customer message…"
+            rows={1}
+            className="flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
+          />
+        )}
         <Button
           size="sm"
           onClick={send}
-          disabled={(!input.trim() && !attachment) || sending}
+          disabled={(!input.trim() && !attachment) || sending || recording}
           className="h-9 w-9 shrink-0 p-0"
         >
           {sending ? (
