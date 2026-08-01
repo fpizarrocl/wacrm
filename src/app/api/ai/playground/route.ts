@@ -112,6 +112,24 @@ export async function POST(request: Request) {
       )
     }
 
+    // Fail loudly on the turn actually being sent right now — rather
+    // than let a confusing "[Nota de voz — configura...]" placeholder
+    // silently reach the model, which just produces a generic "I can't
+    // process audio" reply that looks like a bug. Older audio turns
+    // already in the history (from before the key was added, say) still
+    // degrade gracefully below — only the newest turn blocks the request.
+    const newestTurn = rawTurns[rawTurns.length - 1]
+    if (newestTurn.attachment?.kind === 'audio' && !config.embeddingsApiKey) {
+      return NextResponse.json(
+        {
+          error:
+            'Para probar notas de voz, agrega tu "Clave de embeddings" (OpenAI) en Setup — se usa para transcribir el audio con Whisper.',
+          code: 'no_transcription_key',
+        },
+        { status: 400 },
+      )
+    }
+
     // Resolve attachments now that we have config.embeddingsApiKey (the
     // same OpenAI-only key already used for KB embeddings, reused here
     // for Whisper transcription — see src/lib/ai/transcribe.ts). Image

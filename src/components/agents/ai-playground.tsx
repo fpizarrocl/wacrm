@@ -218,6 +218,10 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       if (!res.ok) {
         if (data.code === 'ai_not_configured') {
           toast.error('No agent configured yet — finish Setup first.');
+        } else if (data.code === 'no_transcription_key') {
+          toast.error(data.error ?? 'Add an embeddings key in Setup to transcribe voice notes.', {
+            action: onGoToSetup ? { label: 'Go to Setup', onClick: onGoToSetup } : undefined,
+          });
         } else {
           toast.error(data.error ?? "Couldn't get a reply.");
         }
