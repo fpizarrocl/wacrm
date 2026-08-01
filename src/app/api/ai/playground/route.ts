@@ -35,16 +35,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'messages is required' }, { status: 400 })
     }
 
+    // Playground input is a plain text box — messages are always
+    // plain-string turns, never the ContentPart[] shape used for
+    // inlined images (that only ever comes from buildConversationContext
+    // reading real inbound messages).
     const messages: ChatMessage[] = rawMessages
-      .filter(
-        (m: unknown): m is ChatMessage =>
-          !!m &&
-          typeof m === 'object' &&
-          ((m as ChatMessage).role === 'user' ||
-            (m as ChatMessage).role === 'assistant') &&
-          typeof (m as ChatMessage).content === 'string' &&
-          (m as ChatMessage).content.trim().length > 0,
-      )
+      .filter((m: unknown): m is { role: 'user' | 'assistant'; content: string } => {
+        if (!m || typeof m !== 'object') return false
+        const { role, content } = m as { role?: unknown; content?: unknown }
+        return (role === 'user' || role === 'assistant') && typeof content === 'string' && content.trim().length > 0
+      })
       .slice(-MAX_TURNS)
 
     if (messages.length === 0) {

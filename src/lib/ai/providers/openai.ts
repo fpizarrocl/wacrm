@@ -1,4 +1,4 @@
-import { AiError, type ProviderResult } from '../types'
+import { AiError, type ChatMessage, type ContentPart, type ProviderResult } from '../types'
 import { MAX_OUTPUT_TOKENS } from '../defaults'
 import {
   MAX_TOOL_ROUNDS,
@@ -18,11 +18,28 @@ interface OpenAiToolCall {
   function: { name: string; arguments: string }
 }
 
+interface OpenAiContentPart {
+  type: 'text' | 'image_url'
+  text?: string
+  image_url?: { url: string }
+}
+
 interface OpenAiWireMessage {
   role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string | null
+  content: string | OpenAiContentPart[] | null
   tool_calls?: OpenAiToolCall[]
   tool_call_id?: string
+}
+
+/** `ContentPart[]` (see buildConversationContext) → OpenAI's
+ *  text/image_url content-block shape. */
+function toOpenAiContent(content: ChatMessage['content']): string | OpenAiContentPart[] {
+  if (typeof content === 'string') return content
+  return content.map((p: ContentPart): OpenAiContentPart =>
+    p.type === 'image'
+      ? { type: 'image_url', image_url: { url: `data:${p.mimeType};base64,${p.data}` } }
+      : { type: 'text', text: p.text },
+  )
 }
 
 interface OpenAiResponse {
@@ -94,7 +111,7 @@ export async function generateOpenAi(args: ProviderArgs): Promise<ProviderResult
 
   const wireMessages: OpenAiWireMessage[] = [
     { role: 'system', content: systemPrompt },
-    ...mergeConsecutive(messages).map((m) => ({ role: m.role, content: m.content })),
+    ...mergeConsecutive(messages).map((m) => ({ role: m.role, content: toOpenAiContent(m.content) })),
   ]
 
   let usage: ReturnType<typeof normalizeUsage> = null

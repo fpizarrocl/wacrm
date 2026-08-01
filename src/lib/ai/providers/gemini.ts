@@ -1,4 +1,4 @@
-import { AiError, type ChatMessage, type ProviderResult } from '../types'
+import { AiError, type ChatMessage, type ContentPart, type ProviderResult } from '../types'
 import { MAX_OUTPUT_TOKENS } from '../defaults'
 import {
   MAX_TOOL_ROUNDS,
@@ -13,8 +13,18 @@ const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models
 
 interface GeminiPart {
   text?: string
+  inlineData?: { mimeType: string; data: string }
   functionCall?: { name: string; id?: string; args?: Record<string, unknown> }
   functionResponse?: { name: string; id?: string; response: { result: string } }
+}
+
+/** `ContentPart[]` (see buildConversationContext) → Gemini's
+ *  text/inlineData part shape. */
+function toGeminiParts(content: ChatMessage['content']): GeminiPart[] {
+  if (typeof content === 'string') return [{ text: content }]
+  return content.map((p: ContentPart): GeminiPart =>
+    p.type === 'image' ? { inlineData: { mimeType: p.mimeType, data: p.data } } : { text: p.text },
+  )
 }
 
 interface GeminiContent {
@@ -48,7 +58,7 @@ function toGeminiContents(messages: ChatMessage[]): GeminiContent[] {
       : [{ role: 'user' as const, content: '(The customer has not sent a message yet.)' }]
   return turns.map((m) => ({
     role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
-    parts: [{ text: m.content }],
+    parts: toGeminiParts(m.content),
   }))
 }
 

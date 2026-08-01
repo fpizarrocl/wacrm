@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
+import { transcribeAudio } from '@/lib/ai/transcribe'
+import { loadEmbeddingsKey } from '@/lib/ai/config'
 import {
   findOrCreateSocialContact,
   findOrCreateSocialConversation,
@@ -161,6 +163,20 @@ async function processWebhook(body: WebhookBody) {
   }
 }
 
+// Meta's Messenger/Instagram attachment `type` values mapped onto the
+// messages.content_type CHECK constraint (migration 001 + 010:
+// text, image, document, audio, video, location, template, interactive).
+// Anything unmapped (template, fallback, story_mention, ...) falls back
+// to 'text' with a placeholder — same spirit as the WhatsApp webhook's
+// "[Unsupported message type]" fallback.
+const ATTACHMENT_TYPE_MAP: Record<string, string> = {
+  image: 'image',
+  audio: 'audio',
+  video: 'video',
+  file: 'document',
+  location: 'location',
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function processMessagingEvent(event: MessagingEvent, channel: SocialChannel, config: any) {
   // Echoes are our own outbound messages bouncing back through the same
@@ -172,11 +188,40 @@ async function processMessagingEvent(event: MessagingEvent, channel: SocialChann
   const message = event.message
   if (!senderId || !message) return
 
-  const contentText =
-    message.text ||
-    (message.attachments?.length
-      ? `[${message.attachments[0]?.type || 'attachment'}]`
-      : null)
+  const attachment = message.attachments?.[0]
+  const mediaUrl = attachment?.payload?.url ?? null
+  const contentType = message.text
+    ? 'text'
+    : (attachment?.type && ATTACHMENT_TYPE_MAP[attachment.type]) || 'text'
+
+  let contentText = message.text || (attachment ? `[${attachment.type || 'attachment'}]` : null)
+
+  // Same rationale as the WhatsApp webhook: Messenger/Instagram voice
+  // messages carry no text of their own, and Claude has no audio-input
+  // API — a shared transcription step at ingestion time is what makes
+  // audio work the same for every provider, and it's a bonus for the
+  // human inbox view too (no more blank bubble under the audio player).
+  if (contentType === 'audio' && mediaUrl) {
+    try {
+      const { key: openAiKey } = await loadEmbeddingsKey(supabaseAdmin(), config.account_id)
+      if (openAiKey) {
+        const audioRes = await fetch(mediaUrl)
+        if (audioRes.ok) {
+          const buffer = Buffer.from(await audioRes.arrayBuffer())
+          const mimeType = audioRes.headers.get('content-type') || 'audio/mpeg'
+          contentText = await transcribeAudio(openAiKey, buffer, mimeType)
+        } else {
+          contentText = '[Nota de voz]'
+        }
+      } else {
+        contentText = '[Nota de voz]'
+      }
+    } catch (err) {
+      console.error('[social webhook] audio transcription failed:', err)
+      contentText = '[Nota de voz]'
+    }
+  }
+
   if (!contentText) return
 
   const contactOutcome = await findOrCreateSocialContact(
@@ -199,8 +244,9 @@ async function processMessagingEvent(event: MessagingEvent, channel: SocialChann
   const { error: msgErr } = await supabaseAdmin().from('messages').insert({
     conversation_id: conversationOutcome.conversation.id,
     sender_type: 'customer',
-    content_type: message.attachments?.length && !message.text ? 'image' : 'text',
+    content_type: contentType,
     content_text: contentText,
+    media_url: mediaUrl,
     message_id: message.mid ?? null,
     status: 'delivered',
   })

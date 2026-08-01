@@ -35,10 +35,29 @@ export interface AiConfig {
   embeddingsApiKey: string | null
 }
 
-/** A single conversation turn in the shape both providers accept. */
+/** One piece of a multimodal turn — plain text, or an inlined image
+ *  (base64) for the providers' vision input. */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; mimeType: string; data: string }
+
+/** A single conversation turn in the shape all three providers accept.
+ *  `content` is a plain string for ordinary text turns, or an array of
+ *  parts when the turn carries an inlined image (see `src/lib/ai/media.ts`). */
 export interface ChatMessage {
   role: 'user' | 'assistant'
-  content: string
+  content: string | ContentPart[]
+}
+
+/** The text of a turn, for callers that only care about words (KB
+ *  retrieval query, the handoff summary quote) — an image-only turn
+ *  has no caption text and yields ''. */
+export function contentText(content: string | ContentPart[]): string {
+  if (typeof content === 'string') return content
+  return content
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('\n')
 }
 
 /**

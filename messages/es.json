@@ -1712,7 +1712,7 @@
       "testNetworkError": "No se pudo conectar con el proveedor.",
       "embeddingsKey": "Clave de embeddings",
       "optionalSemanticSearch": "(opcional — habilita la búsqueda semántica en la base de conocimientos)",
-      "embeddingsHint": "Una clave de OpenAI usada solo para generar embeddings de tu base de conocimientos (text-embedding-3-small){sameKeyText}. Déjala en blanco para usar búsqueda por palabras clave. Bórrala para desactivar la búsqueda semántica.",
+      "embeddingsHint": "Una clave de OpenAI usada para generar embeddings de tu base de conocimientos (text-embedding-3-small) y para transcribir notas de voz (Whisper){sameKeyText}. Déjala en blanco para usar búsqueda por palabras clave y omitir la transcripción de notas de voz. Bórrala para desactivar ambas.",
       "sameKeyText": " — puede ser la misma clave de arriba",
       "behaviour": "Comportamiento",
       "behaviourDesc": "Cuéntale al asistente sobre tu negocio — productos, tono, qué puede y qué no puede prometer. Este contexto alimenta tanto los borradores como las respuestas automáticas.",

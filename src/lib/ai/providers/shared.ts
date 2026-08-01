@@ -2,6 +2,7 @@ import {
   AiError,
   type AiUsage,
   type ChatMessage,
+  type ContentPart,
   type ExecuteTool,
   type ToolDefinition,
 } from '../types'
@@ -121,17 +122,31 @@ export async function providerHttpError(
   })
 }
 
+function asParts(content: string | ContentPart[]): ContentPart[] {
+  return typeof content === 'string' ? [{ type: 'text', text: content }] : content
+}
+
 /**
- * Collapse consecutive same-role turns into one (joined with blank
- * lines). Anthropic requires strictly alternating roles; merging is
- * also harmless for OpenAI and keeps the transcript compact.
+ * Collapse consecutive same-role turns into one. Anthropic requires
+ * strictly alternating roles; merging is also harmless for OpenAI and
+ * keeps the transcript compact.
+ *
+ * Plain-string turns merge with a blank-line join, same as before.
+ * Once either side of a merge carries an image (an array `content`,
+ * from `buildConversationContext` inlining the newest inbound photo),
+ * both sides are normalized to `ContentPart[]` and concatenated —
+ * string concatenation can't represent an image.
  */
 export function mergeConsecutive(messages: ChatMessage[]): ChatMessage[] {
   const out: ChatMessage[] = []
   for (const m of messages) {
     const last = out[out.length - 1]
     if (last && last.role === m.role) {
-      last.content = `${last.content}\n\n${m.content}`
+      if (typeof last.content === 'string' && typeof m.content === 'string') {
+        last.content = `${last.content}\n\n${m.content}`
+      } else {
+        last.content = [...asParts(last.content), ...asParts(m.content)]
+      }
     } else {
       out.push({ role: m.role, content: m.content })
     }

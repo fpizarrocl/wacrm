@@ -9,6 +9,8 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { scheduleAiReply } from '@/lib/ai/reply-buffer'
+import { transcribeAudio } from '@/lib/ai/transcribe'
+import { loadEmbeddingsKey } from '@/lib/ai/config'
 import { markMessageAsRead } from '@/lib/whatsapp/meta-api'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import {
@@ -637,8 +639,35 @@ async function processMessage(
   }
 
   // Parse message content based on type
-  const { contentText, mediaUrl, mediaType, interactiveReplyId } =
+  const { contentText: parsedContentText, mediaUrl, mediaType, interactiveReplyId } =
     await parseMessageContent(message, accessToken)
+  let contentText = parsedContentText
+
+  // Voice notes have no caption on WhatsApp's side (parseMessageContent
+  // leaves contentText null for audio) — transcribe so the message has
+  // real text: the inbox shows something under the audio player instead
+  // of a blank bubble, and buildConversationContext (src/lib/ai/context.ts)
+  // picks it up for free with zero audio-specific code, since Claude has
+  // no audio-input API and a shared transcription step is the only
+  // approach that works the same for every provider.
+  if (message.type === 'audio' && message.audio?.id) {
+    try {
+      const { key: openAiKey } = await loadEmbeddingsKey(supabaseAdmin(), accountId)
+      if (openAiKey) {
+        const { url } = await getMediaUrl({ mediaId: message.audio.id, accessToken })
+        const { buffer, contentType: audioMime } = await downloadMedia({
+          downloadUrl: url,
+          accessToken,
+        })
+        contentText = await transcribeAudio(openAiKey, buffer, audioMime)
+      } else {
+        contentText = '[Nota de voz]'
+      }
+    } catch (err) {
+      console.error('[webhook] audio transcription failed:', err)
+      contentText = '[Nota de voz]'
+    }
+  }
 
   // Resolve swipe-reply context if present. A missing parent is fine —
   // we just store NULL and the UI renders the message without a quote.

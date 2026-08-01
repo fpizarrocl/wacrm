@@ -1,4 +1,4 @@
-import { AiError, type ChatMessage, type ProviderResult } from '../types'
+import { AiError, type ChatMessage, type ContentPart, type ProviderResult } from '../types'
 import { MAX_OUTPUT_TOKENS } from '../defaults'
 import {
   MAX_TOOL_ROUNDS,
@@ -14,18 +14,29 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 const ANTHROPIC_VERSION = '2023-06-01'
 
 interface AnthropicContentBlock {
-  type: 'text' | 'tool_use' | 'tool_result'
+  type: 'text' | 'image' | 'tool_use' | 'tool_result'
   text?: string
   id?: string
   name?: string
   input?: unknown
   tool_use_id?: string
   content?: string
+  source?: { type: 'base64'; media_type: string; data: string }
 }
 
 interface AnthropicWireMessage {
   role: 'user' | 'assistant'
   content: string | AnthropicContentBlock[]
+}
+
+/** `ContentPart[]` (see buildConversationContext) → Anthropic's
+ *  text/image content-block shape. */
+function toAnthropicBlocks(parts: ContentPart[]): AnthropicContentBlock[] {
+  return parts.map((p): AnthropicContentBlock =>
+    p.type === 'image'
+      ? { type: 'image', source: { type: 'base64', media_type: p.mimeType, data: p.data } }
+      : { type: 'text', text: p.text },
+  )
 }
 
 interface AnthropicResponse {
@@ -48,7 +59,10 @@ function normalizeForAnthropic(messages: ChatMessage[]): AnthropicWireMessage[] 
   if (merged.length === 0) {
     return [{ role: 'user', content: '(The customer has not sent a message yet.)' }]
   }
-  return merged
+  return merged.map((m) => ({
+    role: m.role,
+    content: typeof m.content === 'string' ? m.content : toAnthropicBlocks(m.content),
+  }))
 }
 
 async function callAnthropic(
