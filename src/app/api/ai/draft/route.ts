@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const messages = await buildConversationContext(supabase, accountId, conversationId)
+    const messages = await buildConversationContext(supabase, accountId, conversationId, config.provider)
     // Nothing to draft from — a brand-new thread with no customer text
     // would otherwise produce a nonsensical reply-to-nothing.
     if (messages.length === 0) {

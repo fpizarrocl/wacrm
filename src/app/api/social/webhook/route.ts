@@ -4,7 +4,7 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { transcribeAudio } from '@/lib/ai/transcribe'
-import { loadEmbeddingsKey } from '@/lib/ai/config'
+import { loadAiConfig } from '@/lib/ai/config'
 import {
   findOrCreateSocialContact,
   findOrCreateSocialConversation,
@@ -196,20 +196,24 @@ async function processMessagingEvent(event: MessagingEvent, channel: SocialChann
 
   let contentText = message.text || (attachment ? `[${attachment.type || 'attachment'}]` : null)
 
-  // Same rationale as the WhatsApp webhook: Messenger/Instagram voice
-  // messages carry no text of their own, and Claude has no audio-input
-  // API — a shared transcription step at ingestion time is what makes
-  // audio work the same for every provider, and it's a bonus for the
-  // human inbox view too (no more blank bubble under the audio player).
+  // Same rationale as the WhatsApp webhook: Gemini understands audio
+  // natively (buildConversationContext inlines the raw bytes at
+  // generation time, keyed off an empty content_text — leave it null
+  // here, no OpenAI key needed). OpenAI/Anthropic have no such native
+  // path (Claude has no audio-input API at all), so those accounts
+  // transcribe with Whisper here instead — a bonus for the human inbox
+  // view too (no more blank bubble under the audio player).
   if (contentType === 'audio' && mediaUrl) {
     try {
-      const { key: openAiKey } = await loadEmbeddingsKey(supabaseAdmin(), config.account_id)
-      if (openAiKey) {
+      const aiConfig = await loadAiConfig(supabaseAdmin(), config.account_id, { requireActive: false })
+      if (aiConfig?.provider === 'gemini') {
+        contentText = null
+      } else if (aiConfig?.embeddingsApiKey) {
         const audioRes = await fetch(mediaUrl)
         if (audioRes.ok) {
           const buffer = Buffer.from(await audioRes.arrayBuffer())
           const mimeType = audioRes.headers.get('content-type') || 'audio/mpeg'
-          contentText = await transcribeAudio(openAiKey, buffer, mimeType)
+          contentText = await transcribeAudio(aiConfig.embeddingsApiKey, buffer, mimeType)
         } else {
           contentText = '[Nota de voz]'
         }
@@ -222,7 +226,10 @@ async function processMessagingEvent(event: MessagingEvent, channel: SocialChann
     }
   }
 
-  if (!contentText) return
+  // A Gemini voice note has neither text nor a placeholder (contentText
+  // is deliberately null above) — mediaUrl alone is enough to process it,
+  // buildConversationContext inlines the audio bytes at generation time.
+  if (!contentText && !mediaUrl) return
 
   const contactOutcome = await findOrCreateSocialContact(
     config.account_id,
@@ -258,7 +265,11 @@ async function processMessagingEvent(event: MessagingEvent, channel: SocialChann
   await supabaseAdmin()
     .from('conversations')
     .update({
-      last_message_text: contentText,
+      // contentText is deliberately null for a Gemini voice note (see
+      // above) — the conversation-list preview still needs something
+      // to show, content_text itself stays null so buildConversationContext
+      // can tell "untranscribed" apart from "transcribed but empty".
+      last_message_text: contentText ?? '🎤 Nota de voz',
       last_message_at: new Date().toISOString(),
       unread_count: (conversationOutcome.conversation.unread_count ?? 0) + 1,
       updated_at: new Date().toISOString(),

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ChatMessage, ContentPart } from './types'
+import type { AiProvider, ChatMessage, ContentPart } from './types'
 import { aiContextMessageLimit } from './defaults'
-import { fetchInboundImageAsBase64 } from './media'
+import { fetchInboundMediaAsBase64 } from './media'
 
 interface DbMessage {
   sender_type: 'customer' | 'agent' | 'bot'
@@ -15,14 +15,18 @@ interface DbMessage {
  * provider-neutral chat shape. Customer messages become `user`; agent
  * and bot messages become `assistant`.
  *
- * text + audio rows use their `content_text` as-is — audio is
- * transcribed at ingestion time (see the WhatsApp/social webhooks), so
- * by the time it reaches here it's just text, no special handling
- * needed. image rows: only the newest one in the window is downloaded
- * and inlined as a vision content part (bounds cost/latency — a long
- * thread doesn't re-bill every old photo on every turn); older images
- * fall back to a placeholder. Templates/interactive/location/video/
- * document messages are excluded — no text or vision content to model.
+ * text rows use their `content_text` as-is. image rows: only the
+ * newest one in the window is downloaded and inlined as a vision
+ * content part (bounds cost/latency — a long thread doesn't re-bill
+ * every old photo on every turn); older images fall back to a
+ * placeholder. audio rows: on OpenAI/Anthropic, the webhook already
+ * transcribed them with Whisper at ingestion time, so `content_text`
+ * is real text here — no special handling needed. On Gemini (native
+ * audio understanding, no Whisper key required), ingestion leaves
+ * `content_text` empty and only the newest such row gets downloaded
+ * and inlined as an audio content part, same cost-bounding rule as
+ * images. Templates/interactive/location/video/document messages are
+ * excluded — no text or vision/audio content to model.
  *
  * Ordered oldest-first (chronological) so the transcript reads
  * naturally and the most recent customer message lands last.
@@ -31,6 +35,7 @@ export async function buildConversationContext(
   db: SupabaseClient,
   accountId: string,
   conversationId: string,
+  provider: AiProvider,
   limit: number = aiContextMessageLimit(),
 ): Promise<ChatMessage[]> {
   const { data, error } = await db
@@ -45,18 +50,27 @@ export async function buildConversationContext(
 
   const rows = ((data ?? []) as DbMessage[]).reverse()
 
-  // Only the last image row (by position in the already-chronological
-  // list) gets the full download-and-inline treatment.
+  // Only the last image row gets the full download-and-inline
+  // treatment. Same for the last *untranscribed* audio row (empty
+  // content_text — i.e. a Gemini-account voice note that skipped
+  // Whisper at ingestion), and only when the account is on Gemini.
   let newestImageIndex = -1
+  let newestAudioIndex = -1
   for (let i = rows.length - 1; i >= 0; i--) {
-    if (rows[i].content_type === 'image') {
-      newestImageIndex = i
-      break
+    if (newestImageIndex === -1 && rows[i].content_type === 'image') newestImageIndex = i
+    if (
+      provider === 'gemini' &&
+      newestAudioIndex === -1 &&
+      rows[i].content_type === 'audio' &&
+      !rows[i].content_text?.trim()
+    ) {
+      newestAudioIndex = i
     }
+    if (newestImageIndex !== -1 && (provider !== 'gemini' || newestAudioIndex !== -1)) break
   }
 
   let channel: 'whatsapp' | 'instagram' | 'messenger' | null = null
-  if (newestImageIndex !== -1) {
+  if (newestImageIndex !== -1 || newestAudioIndex !== -1) {
     const { data: conv } = await db
       .from('conversations')
       .select('channel')
@@ -72,10 +86,12 @@ export async function buildConversationContext(
 
     if (m.content_type === 'image') {
       if (i === newestImageIndex && m.media_url && channel) {
-        const image = await fetchInboundImageAsBase64(db, accountId, {
-          mediaUrl: m.media_url,
-          channel,
-        })
+        const image = await fetchInboundMediaAsBase64(
+          db,
+          accountId,
+          { mediaUrl: m.media_url, channel },
+          'image/jpeg',
+        )
         if (image) {
           const parts: ContentPart[] = [{ type: 'image', mimeType: image.mimeType, data: image.data }]
           if (m.content_text?.trim()) parts.unshift({ type: 'text', text: m.content_text.trim() })
@@ -84,6 +100,21 @@ export async function buildConversationContext(
         }
       }
       out.push({ role, content: '[Imagen enviada anteriormente]' })
+      continue
+    }
+
+    if (m.content_type === 'audio' && i === newestAudioIndex && m.media_url && channel) {
+      const audio = await fetchInboundMediaAsBase64(
+        db,
+        accountId,
+        { mediaUrl: m.media_url, channel },
+        'audio/ogg',
+      )
+      if (audio) {
+        out.push({ role, content: [{ type: 'audio', mimeType: audio.mimeType, data: audio.data }] })
+        continue
+      }
+      out.push({ role, content: '[Nota de voz]' })
       continue
     }
 

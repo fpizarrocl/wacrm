@@ -115,29 +115,35 @@ export async function POST(request: Request) {
     // Fail loudly on the turn actually being sent right now — rather
     // than let a confusing "[Nota de voz — configura...]" placeholder
     // silently reach the model, which just produces a generic "I can't
-    // process audio" reply that looks like a bug. Older audio turns
-    // already in the history (from before the key was added, say) still
-    // degrade gracefully below — only the newest turn blocks the request.
+    // process audio" reply that looks like a bug. Only applies to
+    // OpenAI/Anthropic — Gemini understands audio natively below, no
+    // key required at all. Older audio turns already in the history
+    // still degrade gracefully further down — only the newest turn
+    // blocks the request.
     const newestTurn = rawTurns[rawTurns.length - 1]
-    if (newestTurn.attachment?.kind === 'audio' && !config.embeddingsApiKey) {
+    if (
+      newestTurn.attachment?.kind === 'audio' &&
+      config.provider !== 'gemini' &&
+      !config.embeddingsApiKey
+    ) {
       return NextResponse.json(
         {
           error:
-            'Para probar notas de voz, agrega tu "Clave de embeddings" (OpenAI) en Setup — se usa para transcribir el audio con Whisper.',
+            'Para probar notas de voz con OpenAI o Anthropic, agrega tu "Clave de embeddings" (OpenAI) en Setup — se usa para transcribir el audio con Whisper. (Gemini no la necesita, entiende audio directamente.)',
           code: 'no_transcription_key',
         },
         { status: 400 },
       )
     }
 
-    // Resolve attachments now that we have config.embeddingsApiKey (the
-    // same OpenAI-only key already used for KB embeddings, reused here
-    // for Whisper transcription — see src/lib/ai/transcribe.ts). Image
-    // turns become a ContentPart[] (text + inline base64) for the
-    // providers' vision input; audio turns are transcribed to plain
-    // text so they flow through the rest of the pipeline unchanged —
-    // Claude has no audio-input API, so transcription is the one
-    // approach that works the same for every provider.
+    // Resolve attachments. Image turns become a ContentPart[] (text +
+    // inline base64) for the providers' vision input — supported
+    // natively by all three. Audio turns: Gemini also understands audio
+    // natively, so its bytes go straight into a ContentPart too, no key
+    // needed; OpenAI/Anthropic have no such path (Claude has no
+    // audio-input API at all), so those are transcribed to plain text
+    // with Whisper instead, reusing the same OpenAI-only embeddings key
+    // already used for KB search (see src/lib/ai/transcribe.ts).
     const messages: ChatMessage[] = []
     for (const t of rawTurns) {
       if (!t.attachment) {
@@ -153,6 +159,14 @@ export async function POST(request: Request) {
         continue
       }
       // audio
+      if (config.provider === 'gemini') {
+        const parts: ContentPart[] = [
+          { type: 'audio', mimeType: t.attachment.mimeType, data: t.attachment.data },
+        ]
+        if (t.content.trim()) parts.unshift({ type: 'text', text: t.content.trim() })
+        messages.push({ role: t.role, content: parts })
+        continue
+      }
       if (!config.embeddingsApiKey) {
         messages.push({ role: t.role, content: '[Nota de voz — configura una clave de OpenAI en "Clave de embeddings" para transcribirla]' })
         continue

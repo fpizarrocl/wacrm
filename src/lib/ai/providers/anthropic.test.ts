@@ -59,4 +59,18 @@ describe('generateAnthropic content blocks', () => {
       ],
     })
   })
+
+  it('falls back to a text placeholder for an audio part (Claude has no audio-input API)', async () => {
+    const fetchSpy = vi.fn(async () => jsonResponse({ content: [{ type: 'text', text: 'ok' }] }))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await generateAnthropic({
+      ...baseArgs,
+      messages: [{ role: 'user', content: [{ type: 'audio', mimeType: 'audio/ogg', data: 'EEEE' }] }],
+    })
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.messages[0]).toEqual({ role: 'user', content: [{ type: 'text', text: '[voice note]' }] })
+  })
 })

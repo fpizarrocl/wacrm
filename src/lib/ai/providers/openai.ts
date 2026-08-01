@@ -32,14 +32,21 @@ interface OpenAiWireMessage {
 }
 
 /** `ContentPart[]` (see buildConversationContext) → OpenAI's
- *  text/image_url content-block shape. */
+ *  text/image_url content-block shape. An 'audio' part should never
+ *  reach here in practice — Gemini is the only provider with native
+ *  audio understanding (see ContentPart's doc comment in ../types.ts),
+ *  OpenAI/Anthropic get a Whisper transcript instead — but a defensive
+ *  text fallback beats silently sending a malformed image block if
+ *  that invariant is ever violated (e.g. the account switches provider
+ *  between an inbound message and the reply). */
 function toOpenAiContent(content: ChatMessage['content']): string | OpenAiContentPart[] {
   if (typeof content === 'string') return content
-  return content.map((p: ContentPart): OpenAiContentPart =>
-    p.type === 'image'
-      ? { type: 'image_url', image_url: { url: `data:${p.mimeType};base64,${p.data}` } }
-      : { type: 'text', text: p.text },
-  )
+  return content.map((p: ContentPart): OpenAiContentPart => {
+    if (p.type === 'image') {
+      return { type: 'image_url', image_url: { url: `data:${p.mimeType};base64,${p.data}` } }
+    }
+    return { type: 'text', text: p.type === 'text' ? p.text : '[voice note]' }
+  })
 }
 
 interface OpenAiResponse {

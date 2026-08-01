@@ -22,8 +22,11 @@ interface GeminiPart {
  *  text/inlineData part shape. */
 function toGeminiParts(content: ChatMessage['content']): GeminiPart[] {
   if (typeof content === 'string') return [{ text: content }]
+  // Images and voice notes both become inlineData — Gemini is the one
+  // provider with native audio understanding, so an 'audio' part only
+  // ever reaches here (see ContentPart's doc comment in ../types.ts).
   return content.map((p: ContentPart): GeminiPart =>
-    p.type === 'image' ? { inlineData: { mimeType: p.mimeType, data: p.data } } : { text: p.text },
+    p.type === 'text' ? { text: p.text } : { inlineData: { mimeType: p.mimeType, data: p.data } },
   )
 }
 

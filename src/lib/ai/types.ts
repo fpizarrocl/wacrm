@@ -35,11 +35,17 @@ export interface AiConfig {
   embeddingsApiKey: string | null
 }
 
-/** One piece of a multimodal turn — plain text, or an inlined image
- *  (base64) for the providers' vision input. */
+/** One piece of a multimodal turn — plain text, an inlined image, or
+ *  (Gemini only — the one provider with native audio understanding)
+ *  an inlined voice note. OpenAI/Anthropic never see an 'audio' part:
+ *  their ingestion path transcribes with Whisper instead (see
+ *  src/lib/ai/transcribe.ts) since Anthropic has no audio-input API
+ *  at all and one shared behavior per non-Gemini provider is simpler
+ *  than a per-provider audio story. */
 export type ContentPart =
   | { type: 'text'; text: string }
   | { type: 'image'; mimeType: string; data: string }
+  | { type: 'audio'; mimeType: string; data: string }
 
 /** A single conversation turn in the shape all three providers accept.
  *  `content` is a plain string for ordinary text turns, or an array of

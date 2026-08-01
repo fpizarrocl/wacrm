@@ -30,13 +30,19 @@ interface AnthropicWireMessage {
 }
 
 /** `ContentPart[]` (see buildConversationContext) → Anthropic's
- *  text/image content-block shape. */
+ *  text/image content-block shape. An 'audio' part should never reach
+ *  here — Claude has no audio-input API at all, so OpenAI/Anthropic
+ *  ingestion always transcribes with Whisper instead of ever producing
+ *  one (see ContentPart's doc comment in ../types.ts) — but a
+ *  defensive text fallback beats silently dropping the note if that
+ *  invariant is ever violated. */
 function toAnthropicBlocks(parts: ContentPart[]): AnthropicContentBlock[] {
-  return parts.map((p): AnthropicContentBlock =>
-    p.type === 'image'
-      ? { type: 'image', source: { type: 'base64', media_type: p.mimeType, data: p.data } }
-      : { type: 'text', text: p.text },
-  )
+  return parts.map((p): AnthropicContentBlock => {
+    if (p.type === 'image') {
+      return { type: 'image', source: { type: 'base64', media_type: p.mimeType, data: p.data } }
+    }
+    return { type: 'text', text: p.type === 'text' ? p.text : '[voice note]' }
+  })
 }
 
 interface AnthropicResponse {

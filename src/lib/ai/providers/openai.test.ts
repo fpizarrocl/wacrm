@@ -66,4 +66,18 @@ describe('generateOpenAi content blocks', () => {
       ],
     })
   })
+
+  it('falls back to a text placeholder for an audio part (OpenAI has no audio-input path)', async () => {
+    const fetchSpy = vi.fn(async () => jsonResponse({ choices: [{ message: { content: 'ok' } }] }))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await generateOpenAi({
+      ...baseArgs,
+      messages: [{ role: 'user', content: [{ type: 'audio', mimeType: 'audio/ogg', data: 'EEEE' }] }],
+    })
+
+    const [, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit]
+    const body = JSON.parse(init.body as string)
+    expect(body.messages[1]).toEqual({ role: 'user', content: [{ type: 'text', text: '[voice note]' }] })
+  })
 })

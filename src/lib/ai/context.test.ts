@@ -24,7 +24,7 @@ describe('buildConversationContext', () => {
       { sender_type: 'agent', content_text: 'second' },
       { sender_type: 'customer', content_text: 'first' },
     ]
-    const out = await buildConversationContext(fakeDb(rows), 'acct-1', 'conv-1')
+    const out = await buildConversationContext(fakeDb(rows), 'acct-1', 'conv-1', 'openai')
     expect(out).toEqual([
       { role: 'user', content: 'first' },
       { role: 'assistant', content: 'second' },
@@ -37,6 +37,7 @@ describe('buildConversationContext', () => {
       fakeDb([{ sender_type: 'bot', content_text: 'auto reply' }]),
       'acct-1',
       'conv-1',
+      'openai',
     )
     expect(out).toEqual([{ role: 'assistant', content: 'auto reply' }])
   })
@@ -50,6 +51,7 @@ describe('buildConversationContext', () => {
       ]),
       'acct-1',
       'conv-1',
+      'openai',
     )
     expect(out).toEqual([{ role: 'user', content: 'real' }])
   })

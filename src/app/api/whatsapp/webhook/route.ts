@@ -10,7 +10,7 @@ import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { scheduleAiReply } from '@/lib/ai/reply-buffer'
 import { transcribeAudio } from '@/lib/ai/transcribe'
-import { loadEmbeddingsKey } from '@/lib/ai/config'
+import { loadAiConfig } from '@/lib/ai/config'
 import { markMessageAsRead } from '@/lib/whatsapp/meta-api'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import {
@@ -644,22 +644,27 @@ async function processMessage(
   let contentText = parsedContentText
 
   // Voice notes have no caption on WhatsApp's side (parseMessageContent
-  // leaves contentText null for audio) — transcribe so the message has
-  // real text: the inbox shows something under the audio player instead
-  // of a blank bubble, and buildConversationContext (src/lib/ai/context.ts)
-  // picks it up for free with zero audio-specific code, since Claude has
-  // no audio-input API and a shared transcription step is the only
-  // approach that works the same for every provider.
+  // leaves contentText null for audio). Gemini understands audio
+  // natively (buildConversationContext inlines the raw bytes at
+  // generation time, src/lib/ai/context.ts) — no transcription needed,
+  // and no OpenAI key to configure. OpenAI/Anthropic have no such
+  // native path (Claude has no audio-input API at all), so those
+  // accounts transcribe with Whisper here instead: the inbox shows
+  // real text under the audio player instead of a blank bubble, and
+  // buildConversationContext picks up the transcript for free.
   if (message.type === 'audio' && message.audio?.id) {
     try {
-      const { key: openAiKey } = await loadEmbeddingsKey(supabaseAdmin(), accountId)
-      if (openAiKey) {
+      const aiConfig = await loadAiConfig(supabaseAdmin(), accountId, { requireActive: false })
+      if (aiConfig?.provider === 'gemini') {
+        // Leave contentText null — mediaUrl (already resolved above)
+        // is all buildConversationContext needs to inline the audio.
+      } else if (aiConfig?.embeddingsApiKey) {
         const { url } = await getMediaUrl({ mediaId: message.audio.id, accessToken })
         const { buffer, contentType: audioMime } = await downloadMedia({
           downloadUrl: url,
           accessToken,
         })
-        contentText = await transcribeAudio(openAiKey, buffer, audioMime)
+        contentText = await transcribeAudio(aiConfig.embeddingsApiKey, buffer, audioMime)
       } else {
         contentText = '[Nota de voz]'
       }
