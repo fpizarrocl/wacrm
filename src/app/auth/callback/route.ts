@@ -34,6 +34,15 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}${next}`);
     }
     console.error("[auth/callback] exchangeCodeForSession failed:", error.message);
+  } else {
+    // No `code` at all — Supabase/Google sent us back with something
+    // else (an `error`/`error_description` pair, most likely). Log
+    // every param so we can see what actually came back instead of
+    // guessing.
+    console.error(
+      "[auth/callback] no code param; full query:",
+      Object.fromEntries(searchParams.entries()),
+    );
   }
 
   return NextResponse.redirect(`${origin}/login?error=oauth_failed`);
