@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getBaseUrl } from "@/lib/http/base-url";
 
 // Standard @supabase/ssr OAuth callback: Supabase redirects the browser
 // here with a `code` after the provider (Google) round-trip completes.
@@ -8,7 +9,14 @@ import { createClient } from "@/lib/supabase/server";
 // Components) can set cookies directly, so no middleware involvement
 // is needed here.
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  // NOT `new URL(request.url).origin` — behind a reverse proxy
+  // (Hostinger Managed Node.js, nginx, etc.) that reflects the app's
+  // internal bind address (e.g. 0.0.0.0:3000) rather than the public
+  // domain, sending the browser back to an address it can't reach.
+  // getBaseUrl reads X-Forwarded-Host/Proto the same way the invite
+  // links do.
+  const origin = getBaseUrl(request);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   // Where signInWithOAuth's redirectTo pointed us after success —
   // `/dashboard` by default, or `/join/<token>` when a team invite is
