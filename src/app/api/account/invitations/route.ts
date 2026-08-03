@@ -20,9 +20,11 @@
 import { NextResponse } from "next/server";
 
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
+import { supabaseAdmin } from "@/lib/auth/admin-client";
 import {
   clampExpiryDays,
   generateInviteToken,
+  generateTempPassword,
   inviteExpiresAt,
   inviteUrl,
 } from "@/lib/auth/invitations";
@@ -163,6 +165,55 @@ export async function POST(request: Request) {
       );
     }
 
+    // Precreate the invitee's account. With Supabase's public
+    // "Allow new users to sign up" toggle off, this is the only way
+    // an invited person ever gets an account — they log in (password
+    // or Google) against an account that already exists, which isn't
+    // gated the way self-service signup is. Runs AFTER the row insert
+    // above so a duplicate-pending-invite 409 never leaves an orphan
+    // auth user with nothing referencing it.
+    let accountCreated = false;
+    let tempPassword: string | undefined;
+    let accountWarning: string | null = null;
+    try {
+      const tempPw = generateTempPassword();
+      const { data: created, error: createErr } =
+        await supabaseAdmin().auth.admin.createUser({
+          email,
+          password: tempPw,
+          email_confirm: true,
+        });
+
+      if (createErr) {
+        // Not an error for this flow — the invited email already has
+        // an account; they'll log in with what they already know.
+        if (createErr.code !== "email_exists") {
+          accountWarning = createErr.message;
+          console.warn(
+            "[POST /api/account/invitations] precreate failed (non-fatal):",
+            createErr,
+          );
+        }
+      } else if (created?.user) {
+        accountCreated = true;
+        tempPassword = tempPw;
+        await supabaseAdmin()
+          .from("profiles")
+          .update({ must_change_password: true })
+          .eq("user_id", created.user.id);
+        await supabaseAdmin()
+          .from("account_invitations")
+          .update({ created_user_id: created.user.id })
+          .eq("id", data.id);
+      }
+    } catch (err) {
+      accountWarning = err instanceof Error ? err.message : "Unknown error";
+      console.warn(
+        "[POST /api/account/invitations] precreate threw (non-fatal):",
+        err,
+      );
+    }
+
     return NextResponse.json(
       {
         invitation: data,
@@ -170,6 +221,9 @@ export async function POST(request: Request) {
         token,
         url: inviteUrl(token, getBaseUrl(request)),
         expiresInDays: expiryDays,
+        account_created: accountCreated,
+        ...(tempPassword ? { temp_password: tempPassword } : {}),
+        ...(accountWarning ? { account_warning: accountWarning } : {}),
       },
       { status: 201 },
     );

@@ -65,6 +65,12 @@ interface CreatedInvite {
   role: InviteRole;
   expiresInDays: number;
   email: string;
+  /** Whether a brand-new account was precreated for this invite (see
+   *  src/app/api/account/invitations/route.ts) — false when the
+   *  invited email already had an account, in which case there's no
+   *  temp password to show. */
+  accountCreated: boolean;
+  tempPassword?: string;
   /** Snapshotted at creation time so a later account rename can't
    *  retroactively change the wa.me message text on the result step. */
   accountName: string;
@@ -138,6 +144,9 @@ export function InviteMemberDialog({
       const data = (await res.json()) as {
         url: string;
         expiresInDays: number;
+        account_created: boolean;
+        temp_password?: string;
+        account_warning?: string;
       };
 
       setResult({
@@ -145,6 +154,8 @@ export function InviteMemberDialog({
         role,
         expiresInDays: data.expiresInDays,
         email: trimmedEmail,
+        accountCreated: data.account_created,
+        tempPassword: data.temp_password,
         // Snapshot the account name into the result so the wa.me
         // share message has team context. Falls back to a generic
         // string if `account` hasn't loaded yet (shouldn't happen
@@ -152,6 +163,13 @@ export function InviteMemberDialog({
         // profile — but stay safe).
         accountName: account?.name ?? 'our wacrm account',
       });
+      if (data.account_warning) {
+        // Best-effort precreation failed (e.g. Admin API hiccup) —
+        // the invite link itself is still valid, but the invitee
+        // won't be able to log in until this is sorted out. Surface
+        // it as a toast rather than blocking the result screen.
+        toast.error(data.account_warning);
+      }
       onCreated();
     } catch (err) {
       console.error('[InviteMemberDialog] create error:', err);
@@ -170,6 +188,16 @@ export function InviteMemberDialog({
       // Most likely "not in a secure context" — happens on http://
       // local IPs. Surface the link in the toast so the admin can
       // hand-copy it.
+      toast.error(t('clipboardBlocked'));
+    }
+  }
+
+  async function copyPassword() {
+    if (!result?.tempPassword) return;
+    try {
+      await navigator.clipboard.writeText(result.tempPassword);
+      toast.success(t('passwordCopied'));
+    } catch {
       toast.error(t('clipboardBlocked'));
     }
   }
@@ -231,6 +259,31 @@ export function InviteMemberDialog({
                   {t('copy')}
                 </Button>
               </div>
+
+              {result.accountCreated && result.tempPassword ? (
+                <>
+                  <Label className="text-muted-foreground">{t('tempPasswordLabel')}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      readOnly
+                      value={result.tempPassword}
+                      className="bg-muted border-border text-foreground font-mono text-xs"
+                      onFocus={(e) => e.currentTarget.select()}
+                    />
+                    <Button
+                      type="button"
+                      onClick={copyPassword}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground shrink-0"
+                    >
+                      <Copy className="size-4" />
+                      {t('copy')}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t('tempPasswordHint')}</p>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t('accountExistsNote')}</p>
+              )}
 
               {/* Higher-contrast amber than the original 10% / amber-200.
                   Reviewed against slate-900 to meet WCAG AAA for body

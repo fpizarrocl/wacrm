@@ -1261,7 +1261,7 @@
     },
     "invite": {
       "inviteCreated": "초대가 생성되었습니다",
-      "inviteCreatedDesc": "이 링크를 <bold>{email}</bold>과 공유하세요 — 해당 이메일만 이 링크로 가입(또는 로그인)해 <bold>{role}</bold> 역할로 계정에 합류할 수 있습니다. 링크는 <bold>{days}일</bold> 동안 유효합니다.",
+      "inviteCreatedDesc": "이 링크를 <bold>{email}</bold>과 공유하세요 — 해당 이메일만 이 링크로 로그인해 <bold>{role}</bold> 역할로 계정에 합류할 수 있습니다. 링크는 <bold>{days}일</bold> 동안 유효합니다.",
       "inviteLink": "초대 링크",
       "copy": "복사",
       "saveLinkNow": "지금 이 링크를 저장하세요.",
@@ -1288,6 +1288,10 @@
       "generateLink": "링크 생성",
       "labelTooLong": "라벨은 {max}자 이하여야 합니다",
       "copied": "초대 링크가 복사되었습니다",
+      "tempPasswordLabel": "임시 비밀번호",
+      "tempPasswordHint": "링크와 함께 공유하세요. 이 비밀번호로 처음 로그인할 때 새 비밀번호를 설정하라는 안내가 표시됩니다.",
+      "passwordCopied": "임시 비밀번호가 복사되었습니다",
+      "accountExistsNote": "이 이메일은 이미 계정이 있습니다 — 위 링크만으로 로그인하고 합류할 수 있습니다.",
       "clipboardBlocked": "클립보드 접근이 차단되었습니다 — 링크를 직접 복사하세요",
       "whatsappMessage": "이 링크(유효 기간 {expiresInDays}일)로 wacrm의 {accountName}에 참여하세요: {url}"
     },

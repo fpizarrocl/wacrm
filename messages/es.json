@@ -1261,7 +1261,7 @@
     },
     "invite": {
       "inviteCreated": "Invitación creada",
-      "inviteCreatedDesc": "Comparte este enlace con <bold>{email}</bold> — solo ese correo podrá usarlo para registrarse (o iniciar sesión) y unirse a la cuenta como <bold>{role}</bold>. El enlace es válido por <bold>{days} {days, plural, =1 {día} other {días}}</bold>.",
+      "inviteCreatedDesc": "Comparte este enlace con <bold>{email}</bold> — solo ese correo podrá usarlo para iniciar sesión y unirse a la cuenta como <bold>{role}</bold>. El enlace es válido por <bold>{days} {days, plural, =1 {día} other {días}}</bold>.",
       "inviteLink": "Enlace de invitación",
       "copy": "Copiar",
       "saveLinkNow": "Guarda este enlace ahora.",
@@ -1288,6 +1288,10 @@
       "generateLink": "Generar enlace",
       "labelTooLong": "La etiqueta debe tener como máximo {max} caracteres",
       "copied": "Enlace de invitación copiado",
+      "tempPasswordLabel": "Contraseña temporal",
+      "tempPasswordHint": "Compártela junto con el enlace. Se le pedirá elegir su propia contraseña la primera vez que inicie sesión con esta.",
+      "passwordCopied": "Contraseña temporal copiada",
+      "accountExistsNote": "Este correo ya tiene una cuenta — solo necesita el enlace de arriba para iniciar sesión y unirse.",
       "clipboardBlocked": "Portapapeles bloqueado — copia el enlace manualmente",
       "whatsappMessage": "Únete a {accountName} en wacrm con este enlace (válido por {expiresInDays} días): {url}"
     },

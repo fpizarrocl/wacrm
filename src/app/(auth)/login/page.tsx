@@ -83,7 +83,7 @@ function LoginPageInner() {
     setError(null);
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: signInData, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -105,6 +105,24 @@ function LoginPageInner() {
     const destination = inviteToken
       ? `/join/${encodeURIComponent(inviteToken)}`
       : "/dashboard";
+
+    // Invite-precreated accounts (src/app/api/account/invitations/route.ts)
+    // log in with a temp password and must replace it before doing
+    // anything else — there's no email service to deliver a normal
+    // "set your password" link, so this is the substitute checkpoint.
+    const userId = signInData.user?.id;
+    if (userId) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("must_change_password")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (profile?.must_change_password) {
+        window.location.href = `/change-password?next=${encodeURIComponent(destination)}`;
+        return;
+      }
+    }
+
     window.location.href = destination;
   };
 

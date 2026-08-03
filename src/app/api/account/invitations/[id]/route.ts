@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
+import { supabaseAdmin } from "@/lib/auth/admin-client";
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -43,10 +44,14 @@ export async function DELETE(
     // filter would be redundant; omitting it surfaces a
     // cross-account attempt as a silent 0-row delete (which is
     // exactly what we want for a revocation endpoint).
-    const { error, count } = await ctx.supabase
+    // `.select()` on the delete returns the deleted row(s) so we know
+    // whether to clean up a precreated account below, without a
+    // separate SELECT-then-DELETE round trip that could race.
+    const { data, error } = await ctx.supabase
       .from("account_invitations")
-      .delete({ count: "exact" })
-      .eq("id", id);
+      .delete()
+      .eq("id", id)
+      .select("accepted_at, created_user_id");
 
     if (error) {
       console.error("[DELETE /api/account/invitations/[id]] error:", error);
@@ -56,7 +61,7 @@ export async function DELETE(
       );
     }
 
-    if (count === 0) {
+    if (!data || data.length === 0) {
       // Either the id doesn't exist or RLS hid it (different
       // account). 404 either way — surfacing "exists but not
       // yours" would leak existence.
@@ -64,6 +69,24 @@ export async function DELETE(
         { error: "Invitation not found" },
         { status: 404 },
       );
+    }
+
+    const revoked = data[0];
+    // Clean up the precreated account — but only pre-acceptance. Once
+    // accepted, `created_user_id` is a real active team member; never
+    // touch it (redeem_invitation is the only step that moves real
+    // data/membership, so pre-acceptance the account is still just an
+    // empty personal placeholder, safe to delete).
+    if (!revoked.accepted_at && revoked.created_user_id) {
+      const { error: deleteUserError } = await supabaseAdmin().auth.admin.deleteUser(
+        revoked.created_user_id,
+      );
+      if (deleteUserError) {
+        console.warn(
+          "[DELETE /api/account/invitations/[id]] precreated-account cleanup failed (non-fatal):",
+          deleteUserError,
+        );
+      }
     }
 
     return NextResponse.json({ ok: true });

@@ -484,23 +484,38 @@ export default function JoinPage() {
     );
   }
 
-  // ----- Not authed: prompt to sign up or sign in -----
+  // ----- Not authed: prompt to log in (or, for legacy email-less
+  // invites created before migration 047, sign up) -----
   return (
     <Card className="w-full max-w-md border-border bg-card">
       {inviteHeader}
       <CardContent className="flex flex-col gap-2">
-        <Link href={`/signup?invite=${encodeURIComponent(token!)}`}>
-          <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
-            Create account &amp; join
-          </Button>
-        </Link>
+        {/* Every invite created after migration 048 precreates the
+            invitee's account (see src/app/api/account/invitations/route.ts)
+            — there's nothing left to sign up for, only to log into
+            (password or Google). Legacy invites with no bound email
+            never got an account precreated, so they still need the
+            signup path. */}
+        {!peek.email ? (
+          <Link href={`/signup?invite=${encodeURIComponent(token!)}`}>
+            <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
+              Create account &amp; join
+            </Button>
+          </Link>
+        ) : null}
         <Link href={`/login?invite=${encodeURIComponent(token!)}`}>
-          <Button
-            variant="outline"
-            className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            I already have an account
-          </Button>
+          {peek.email ? (
+            <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90">
+              Log in to accept
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              className="w-full border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              I already have an account
+            </Button>
+          )}
         </Link>
       </CardContent>
     </Card>

@@ -88,6 +88,27 @@ export function inviteExpiresAt(
   return new Date(now.getTime() + ms);
 }
 
+// Excludes visually-ambiguous characters (0/O, 1/l/I) — this password
+// may need to be read aloud or hand-typed from a WhatsApp message.
+const TEMP_PASSWORD_ALPHABET =
+  'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+
+/**
+ * Generate a temporary password for an invite-precreated account
+ * (see src/app/api/account/invitations/route.ts). Shown to the admin
+ * exactly once, alongside the invite link — never persisted in
+ * plaintext. The invitee is forced to replace it on first login
+ * (profiles.must_change_password, migration 048).
+ */
+export function generateTempPassword(length = 12): string {
+  const bytes = randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += TEMP_PASSWORD_ALPHABET[bytes[i] % TEMP_PASSWORD_ALPHABET.length];
+  }
+  return out;
+}
+
 /** Exposed for tests and for the API route that echoes the clamped value back. */
 export function clampExpiryDays(expiresInDays: number | undefined): number {
   if (
