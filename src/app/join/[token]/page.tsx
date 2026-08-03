@@ -58,6 +58,10 @@ interface PeekOk {
   account_name: string;
   role: 'admin' | 'agent' | 'viewer';
   expires_at: string;
+  /** Bound recipient — `null` for legacy invites created before
+   *  email binding shipped (migration 047), which stay open to
+   *  whoever holds the link. */
+  email: string | null;
 }
 interface PeekFail {
   ok: false;
@@ -101,12 +105,20 @@ export default function JoinPage() {
   const [authedUserId, setAuthedUserId] = useState<string | null | undefined>(
     undefined, // undefined = unknown / still loading; null = signed out
   );
+  // Only needed to render the "you're signed in as X" line in the
+  // email-mismatch dialog below — not used for any auth decision.
+  const [authedUserEmail, setAuthedUserEmail] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   // `redeem_invitation` returns 409 when the caller's current account
   // has domain data, or they're already a member of a shared account.
   // A transient toast wasn't enough — the user has no actionable next
   // step. Surface a blocking modal that walks them through it.
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
+  // 403 — the invite is bound to a different email than the caller
+  // is signed in as (migration 047). Separate from `conflictMessage`
+  // because the copy and the underlying problem are different, even
+  // though the recovery action (sign out, try again) is the same.
+  const [emailMismatch, setEmailMismatch] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   // Extracted so the "Try again" button on the server_error card
@@ -125,6 +137,7 @@ export default function JoinPage() {
       const peekBody = (await peekRes.json()) as PeekResult;
       setPeek(peekBody);
       setAuthedUserId(authRes.data.user?.id ?? null);
+      setAuthedUserEmail(authRes.data.user?.email ?? null);
     } catch (err) {
       console.error('[join] peek error:', err);
       setPeek({ ok: false, reason: 'server_error' });
@@ -151,6 +164,7 @@ export default function JoinPage() {
         if (cancelled) return;
         setPeek(peekBody);
         setAuthedUserId(authRes.data.user?.id ?? null);
+        setAuthedUserEmail(authRes.data.user?.email ?? null);
       } catch (err) {
         console.error('[join] peek error:', err);
         if (cancelled) return;
@@ -185,6 +199,8 @@ export default function JoinPage() {
             payload.error ||
               'You are already in another account. Sign in with a different email to join this one.',
           );
+        } else if (res.status === 403) {
+          setEmailMismatch(true);
         } else {
           toast.error(payload.error || 'Failed to accept invitation');
         }
@@ -313,6 +329,13 @@ export default function JoinPage() {
           day: 'numeric',
         })}
         .
+        {peek.email ? (
+          <>
+            {' '}
+            This invitation is only valid for{' '}
+            <span className="text-foreground">{peek.email}</span>.
+          </>
+        ) : null}
       </CardDescription>
     </CardHeader>
   );
@@ -398,6 +421,60 @@ export default function JoinPage() {
                   </>
                 ) : (
                   'Sign out & use a different email'
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Email-mismatch modal — opens when the redeem endpoint
+            returns 403 (invite bound to a different email than the
+            signed-in account, migration 047). Separate from the
+            conflict dialog above: different cause, same recovery. */}
+        <Dialog
+          open={emailMismatch}
+          onOpenChange={(open) => {
+            if (!open) setEmailMismatch(false);
+          }}
+        >
+          <DialogContent className="bg-popover border-border sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-popover-foreground">
+                <AlertTriangle className="size-4 text-amber-400" />
+                Wrong account
+              </DialogTitle>
+              <DialogDescription className="text-muted-foreground">
+                This invitation is only valid for{' '}
+                <span className="text-popover-foreground">{peek.email}</span>.
+                {authedUserEmail ? (
+                  <>
+                    {' '}
+                    You&apos;re currently signed in as{' '}
+                    <span className="text-popover-foreground">{authedUserEmail}</span>.
+                  </>
+                ) : null}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="bg-popover border-border">
+              <Button
+                variant="outline"
+                onClick={() => setEmailMismatch(false)}
+                className="border-border text-popover-foreground hover:bg-muted"
+              >
+                Stay signed in
+              </Button>
+              <Button
+                onClick={handleSignOutAndRetry}
+                disabled={signingOut}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                {signingOut ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Signing out…
+                  </>
+                ) : (
+                  'Sign out & use the correct email'
                 )}
               </Button>
             </DialogFooter>

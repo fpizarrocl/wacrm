@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -43,7 +43,35 @@ function SignupPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  // Locked to the invite's bound email once the peek below resolves
+  // — the account_role migration (047) enforces this server-side at
+  // redeem time regardless, but locking it here saves the visitor a
+  // full signup + email-verification round trip only to find out
+  // they used the wrong address.
+  const [emailLocked, setEmailLocked] = useState(false);
   const supabase = createClient();
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    let cancelled = false;
+    fetch(`/api/invitations/${encodeURIComponent(inviteToken)}/peek`, {
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data: { ok: boolean; email?: string | null }) => {
+        if (cancelled || !data.ok || !data.email) return;
+        setEmail(data.email);
+        setEmailLocked(true);
+      })
+      .catch(() => {
+        // Never block signup on a peek hiccup — the field just
+        // stays editable, and the server still enforces the bound
+        // email at redeem time either way.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken]);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,6 +188,11 @@ function SignupPageInner() {
               disabled={loading}
               onError={(message) => setError(message || null)}
             />
+            {emailLocked ? (
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                Using Google? Sign in with {email}.
+              </p>
+            ) : null}
           </div>
 
           <div className="mb-4 flex items-center gap-3">
@@ -200,9 +233,15 @@ function SignupPageInner() {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                readOnly={emailLocked}
                 required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
+                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20 read-only:opacity-70"
               />
+              {emailLocked ? (
+                <p className="text-xs text-muted-foreground">
+                  This invitation is only valid for this email.
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-2">

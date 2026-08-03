@@ -36,6 +36,10 @@ import {
 
 const MAX_LABEL_LEN = 80;
 
+// Deliberately basic — good enough to catch typos before a wasted
+// round-trip, not meant to be a full RFC 5322 validator.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function GET() {
   try {
     const ctx = await requireRole("admin");
@@ -43,7 +47,7 @@ export async function GET() {
     const { data, error } = await ctx.supabase
       .from("account_invitations")
       .select(
-        "id, role, label, created_by_user_id, created_at, expires_at, accepted_at, accepted_by_user_id",
+        "id, role, label, email, created_by_user_id, created_at, expires_at, accepted_at, accepted_by_user_id",
       )
       .eq("account_id", ctx.accountId)
       .is("accepted_at", null)
@@ -79,7 +83,7 @@ export async function POST(request: Request) {
     if (!limit.success) return rateLimitResponse(limit);
 
     const body = (await request.json().catch(() => null)) as
-      | { role?: unknown; expiresInDays?: unknown; label?: unknown }
+      | { role?: unknown; expiresInDays?: unknown; label?: unknown; email?: unknown }
       | null;
 
     const role = body?.role;
@@ -89,6 +93,15 @@ export async function POST(request: Request) {
       // violation surfaced as a 500.
       return NextResponse.json(
         { error: "'role' must be one of admin, agent, viewer" },
+        { status: 400 },
+      );
+    }
+
+    const email =
+      typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (!email || !EMAIL_RE.test(email)) {
+      return NextResponse.json(
+        { error: "A valid email is required" },
         { status: 400 },
       );
     }
@@ -124,12 +137,25 @@ export async function POST(request: Request) {
         role,
         created_by_user_id: ctx.userId,
         label,
+        email,
         expires_at: expiresAt.toISOString(),
       })
-      .select("id, role, label, expires_at, created_at")
+      .select("id, role, label, email, expires_at, created_at")
       .single();
 
     if (error || !data) {
+      // 23505 = unique_violation on account_invitations_pending_email_idx
+      // (migration 047) — an un-redeemed invite for this email already
+      // exists on this account.
+      if (error?.code === "23505") {
+        return NextResponse.json(
+          {
+            error:
+              "There's already a pending invitation for this email — revoke it first or wait for it to expire.",
+          },
+          { status: 409 },
+        );
+      }
       console.error("[POST /api/account/invitations] insert error:", error);
       return NextResponse.json(
         { error: "Failed to create invitation" },

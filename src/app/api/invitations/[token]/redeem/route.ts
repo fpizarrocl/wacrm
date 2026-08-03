@@ -11,6 +11,8 @@
 //   - SQLSTATE 22023 → 400 (invitation not_found / used / expired)
 //   - SQLSTATE 23505 → 409 (caller's account already has data /
 //     they're already in this or another shared account)
+//   - SQLSTATE 28000 → 403 (invitation is bound to a different
+//     email than the caller is signed in as — migration 047)
 //
 // Rate limit (per IP) is the same shape as peek but tighter —
 // a successful redeem changes data, and the RPC's data-loss
@@ -45,6 +47,9 @@ function rpcErrorToResponse(err: PostgrestError): NextResponse {
   }
   if (err.code === "23505") {
     return NextResponse.json({ error: err.message }, { status: 409 });
+  }
+  if (err.code === "28000") {
+    return NextResponse.json({ error: err.message }, { status: 403 });
   }
   console.error("[redeem] unexpected RPC error:", err);
   return NextResponse.json(

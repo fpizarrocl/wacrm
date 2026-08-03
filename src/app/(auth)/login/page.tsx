@@ -43,6 +43,10 @@ function LoginPageInner() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Locked to the invite's bound email once the peek below resolves
+  // — cosmetic only, `redeem_invitation` (migration 047) enforces
+  // this server-side at accept time regardless of what's typed here.
+  const [emailLocked, setEmailLocked] = useState(false);
   const supabase = createClient();
 
   // /auth/callback bounces back here with ?error=oauth_failed if the
@@ -53,6 +57,26 @@ function LoginPageInner() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    let cancelled = false;
+    fetch(`/api/invitations/${encodeURIComponent(inviteToken)}/peek`, {
+      cache: "no-store",
+    })
+      .then((res) => res.json())
+      .then((data: { ok: boolean; email?: string | null }) => {
+        if (cancelled || !data.ok || !data.email) return;
+        setEmail(data.email);
+        setEmailLocked(true);
+      })
+      .catch(() => {
+        // Never block sign-in on a peek hiccup — field stays editable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,6 +140,11 @@ function LoginPageInner() {
               disabled={loading}
               onError={(message) => setError(message || null)}
             />
+            {emailLocked ? (
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                {t("googleHint", { email })}
+              </p>
+            ) : null}
           </div>
 
           <div className="mb-4 flex items-center gap-3">
@@ -141,9 +170,13 @@ function LoginPageInner() {
                 placeholder={t('emailPlaceholder')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                readOnly={emailLocked}
                 required
-                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20"
+                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus-visible:border-primary focus-visible:ring-primary/20 read-only:opacity-70"
               />
+              {emailLocked ? (
+                <p className="text-xs text-muted-foreground">{t('emailLockedHint')}</p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-2">

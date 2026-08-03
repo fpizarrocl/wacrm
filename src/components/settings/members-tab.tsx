@@ -89,6 +89,7 @@ interface Invitation {
   id: string;
   role: 'admin' | 'agent' | 'viewer';
   label: string | null;
+  email: string | null;
   created_at: string;
   expires_at: string;
 }
@@ -532,6 +533,9 @@ export function MembersTab() {
                             {tRoles(inv.role)}
                           </span>
                         </div>
+                        {inv.email ? (
+                          <p className="mt-0.5 text-xs text-muted-foreground">{inv.email}</p>
+                        ) : null}
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {t('created', { date: fmtDate(inv.created_at) })} · {fmtExpiresIn(inv.expires_at, t)}
                         </p>

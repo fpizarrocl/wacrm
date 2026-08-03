@@ -64,10 +64,16 @@ interface CreatedInvite {
   url: string;
   role: InviteRole;
   expiresInDays: number;
+  email: string;
   /** Snapshotted at creation time so a later account rename can't
    *  retroactively change the wa.me message text on the result step. */
   accountName: string;
 }
+
+// Deliberately basic — mirrors the server's check in
+// src/app/api/account/invitations/route.ts so an obviously-invalid
+// address bounces before the round-trip rather than after.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function InviteMemberDialog({
   open,
@@ -80,6 +86,7 @@ export function InviteMemberDialog({
   const [role, setRole] = useState<InviteRole>('agent');
   const [expiry, setExpiry] = useState<string>('7');
   const [label, setLabel] = useState('');
+  const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<CreatedInvite | null>(null);
 
@@ -87,6 +94,7 @@ export function InviteMemberDialog({
     setRole('agent');
     setExpiry('7');
     setLabel('');
+    setEmail('');
     setResult(null);
     setSubmitting(false);
   }
@@ -103,6 +111,11 @@ export function InviteMemberDialog({
       toast.error(t('labelTooLong', { max: MAX_LABEL_LEN }));
       return;
     }
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail || !EMAIL_RE.test(trimmedEmail)) {
+      toast.error(t('emailInvalid'));
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch('/api/account/invitations', {
@@ -112,6 +125,7 @@ export function InviteMemberDialog({
           role,
           expiresInDays: Number(expiry),
           label: trimmedLabel || undefined,
+          email: trimmedEmail,
         }),
       });
 
@@ -130,6 +144,7 @@ export function InviteMemberDialog({
         url: data.url,
         role,
         expiresInDays: data.expiresInDays,
+        email: trimmedEmail,
         // Snapshot the account name into the result so the wa.me
         // share message has team context. Falls back to a generic
         // string if `account` hasn't loaded yet (shouldn't happen
@@ -192,6 +207,7 @@ export function InviteMemberDialog({
                 {t.rich('inviteCreatedDesc', {
                   role: tRoles(result.role),
                   days: result.expiresInDays,
+                  email: result.email,
                   bold: (chunks: React.ReactNode) => <strong>{chunks}</strong>
                 })}
               </DialogDescription>
@@ -267,6 +283,20 @@ export function InviteMemberDialog({
             </DialogHeader>
 
             <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">{t('emailLabel')}</Label>
+                <Input
+                  type="email"
+                  placeholder={t('emailPlaceholder')}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('emailHint')}
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <Label className="text-muted-foreground">{t('roleLabel')}</Label>
                 <Select
