@@ -1210,6 +1210,7 @@
     "pageDesc": "Everything in one place — your account and your workspace. Pick a section to manage it.",
     "overview": {
       "notSetup": "Not set up yet",
+      "notConnected": "Not connected",
       "connected": "Connected",
       "needsReconnecting": "Needs reconnecting",
       "viewTeamMembers": "View team members",

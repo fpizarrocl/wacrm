@@ -31,6 +31,11 @@ interface WhatsAppStatus {
   connected: boolean;
 }
 
+interface SocialStatus {
+  instagram: boolean;
+  messenger: boolean;
+}
+
 export function SettingsOverview({
   onSelect,
 }: {
@@ -51,6 +56,8 @@ export function SettingsOverview({
   // from blanking the rest of the landing.
   const [whatsapp, setWhatsapp] = useState<WhatsAppStatus | null>(null);
   const [whatsappLoading, setWhatsappLoading] = useState(true);
+  const [social, setSocial] = useState<SocialStatus | null>(null);
+  const [socialLoading, setSocialLoading] = useState(true);
 
   useEffect(() => {
     if (!user || !accountId) return;
@@ -136,6 +143,24 @@ export function SettingsOverview({
       setWhatsappLoading(false);
     })();
 
+    // Instagram / Messenger connection status — cheap table read, no
+    // external API ping needed (unlike WhatsApp's health check).
+    (async () => {
+      setSocialLoading(true);
+      const { data, error } = await supabase
+        .from('social_channel_config')
+        .select('channel, status')
+        .eq('account_id', acctId);
+      if (cancelled) return;
+      setSocial({
+        instagram:
+          !error && !!data?.some((r) => r.channel === 'instagram' && r.status === 'connected'),
+        messenger:
+          !error && !!data?.some((r) => r.channel === 'messenger' && r.status === 'connected'),
+      });
+      setSocialLoading(false);
+    })();
+
     return () => {
       cancelled = true;
     };
@@ -172,6 +197,13 @@ export function SettingsOverview({
           <StatusDot tone="muted" /> {t('needsReconnecting')}
         </>
       ),
+    },
+    {
+      section: 'social',
+      loading: socialLoading,
+      subtitle: `Instagram · ${
+        social?.instagram ? t('connected') : t('notConnected')
+      } · Messenger · ${social?.messenger ? t('connected') : t('notConnected')}`,
     },
     {
       section: 'members',

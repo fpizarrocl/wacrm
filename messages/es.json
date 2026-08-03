@@ -1210,6 +1210,7 @@
     "pageDesc": "Todo en un solo lugar — tu cuenta y tu espacio de trabajo. Elige una sección para gestionarla.",
     "overview": {
       "notSetup": "Aún no configurado",
+      "notConnected": "No conectado",
       "connected": "Conectado",
       "needsReconnecting": "Necesita reconectarse",
       "viewTeamMembers": "Ver miembros del equipo",
