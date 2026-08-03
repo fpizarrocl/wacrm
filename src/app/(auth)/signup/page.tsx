@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -148,6 +149,25 @@ function SignupPageInner() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            <GoogleSignInButton
+              next={
+                inviteToken
+                  ? `/join/${encodeURIComponent(inviteToken)}`
+                  : "/dashboard"
+              }
+              label="Continue with Google"
+              disabled={loading}
+              onError={(message) => setError(message || null)}
+            />
+          </div>
+
+          <div className="mb-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">or continue with email</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
           <form onSubmit={handleSignup} className="flex flex-col gap-4">
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">

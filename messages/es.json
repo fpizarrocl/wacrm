@@ -11,6 +11,9 @@
     "passwordPlaceholder": "Introduce tu contraseña",
     "signingIn": "Iniciando sesión...",
     "signIn": "Iniciar sesión",
+    "continueWithGoogle": "Continuar con Google",
+    "orContinueWithEmail": "o continúa con tu correo",
+    "oauthFailed": "No se pudo iniciar sesión con Google. Intenta de nuevo.",
     "noAccount": "¿No tienes una cuenta?",
     "createAccount": "Crear cuenta"
   },

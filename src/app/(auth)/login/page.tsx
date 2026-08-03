@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,6 +44,15 @@ function LoginPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const supabase = createClient();
+
+  // /auth/callback bounces back here with ?error=oauth_failed if the
+  // code exchange fails (expired/reused code, provider error, etc.).
+  useEffect(() => {
+    if (searchParams.get("error") === "oauth_failed") {
+      setError(t("oauthFailed"));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,6 +105,25 @@ function LoginPageInner() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            <GoogleSignInButton
+              next={
+                inviteToken
+                  ? `/join/${encodeURIComponent(inviteToken)}`
+                  : "/dashboard"
+              }
+              label={t("continueWithGoogle")}
+              disabled={loading}
+              onError={(message) => setError(message || null)}
+            />
+          </div>
+
+          <div className="mb-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">{t("orContinueWithEmail")}</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             {error && (
               <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">

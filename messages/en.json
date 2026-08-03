@@ -11,6 +11,9 @@
     "passwordPlaceholder": "Enter your password",
     "signingIn": "Signing in...",
     "signIn": "Sign in",
+    "continueWithGoogle": "Continue with Google",
+    "orContinueWithEmail": "or continue with email",
+    "oauthFailed": "Google sign-in failed. Please try again.",
     "noAccount": "Don't have an account?",
     "createAccount": "Create account"
   },

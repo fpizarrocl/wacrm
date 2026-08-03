@@ -11,6 +11,9 @@
     "passwordPlaceholder": "비밀번호를 입력하세요",
     "signingIn": "로그인 중...",
     "signIn": "로그인",
+    "continueWithGoogle": "Google로 계속하기",
+    "orContinueWithEmail": "또는 이메일로 계속하기",
+    "oauthFailed": "Google 로그인에 실패했습니다. 다시 시도해 주세요.",
     "noAccount": "계정이 없으신가요?",
     "createAccount": "계정 만들기"
   },
