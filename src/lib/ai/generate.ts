@@ -129,6 +129,11 @@ export function parseGeneration(
     .split(HANDOFF_SENTINEL)
     .join('')
     .replace(LINK_SENTINEL_PATTERN, '')
+    // The prompt asks the model to put a link sentinel "on its own"
+    // line, so removing it usually leaves behind a run of blank lines —
+    // collapse any run of 2+ line breaks down to a single blank line so
+    // the customer doesn't see a big gap where the marker used to be.
+    .replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n\n')
     .trim()
 
   return { text, handoff, linkKeys, usage }

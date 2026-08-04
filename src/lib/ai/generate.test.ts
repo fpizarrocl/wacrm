@@ -86,6 +86,22 @@ describe('parseGeneration', () => {
     })
   })
 
+  it('collapses the blank-line gap left by a sentinel on its own line', () => {
+    const raw =
+      'Para llegar, nos encontramos a 30 km de Pucón.\n\n' +
+      '[[LINK:maps]]\n' +
+      '[[LINK:video]]\n\n' +
+      'Ten en cuenta que no contamos con transporte público.'
+    expect(parseGeneration(raw)).toEqual({
+      text:
+        'Para llegar, nos encontramos a 30 km de Pucón.\n\n' +
+        'Ten en cuenta que no contamos con transporte público.',
+      handoff: false,
+      linkKeys: ['maps', 'video'],
+      usage: null,
+    })
+  })
+
   it('returns no link keys when none are present', () => {
     expect(parseGeneration('Just a normal reply').linkKeys).toEqual([])
   })
