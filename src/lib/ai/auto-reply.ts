@@ -8,7 +8,7 @@ import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { loadAiTools } from './load-tools'
-import { engineSendText } from '@/lib/flows/meta-send'
+import { engineSendText, engineSendInteractiveCtaUrl } from '@/lib/flows/meta-send'
 import { sendSocialReplyText } from '@/lib/social/reply'
 import type { SocialChannel } from '@/lib/social/inbound'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
@@ -145,6 +145,7 @@ export async function dispatchInboundToAiReply(
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
+      quickLinks: config.quickLinks,
     })
 
     // Best-effort typing indicator. Meta ties it to the most recent
@@ -177,7 +178,7 @@ export async function dispatchInboundToAiReply(
 
     const { definitions: tools, executeTool } = await loadAiTools(db, accountId)
 
-    const { text, handoff, usage } = await generateReply({
+    const { text, handoff, linkKeys, usage } = await generateReply({
       config,
       systemPrompt,
       messages,
@@ -255,6 +256,37 @@ export async function dispatchInboundToAiReply(
     if (claimed !== true) return // lost the per-conversation cap race
 
     await sendReply(text)
+
+    // Quick-link buttons (WhatsApp only — IG/Messenger have no interactive
+    // send path yet). Sent as separate follow-up messages, one per link,
+    // after the text reply. Only keys matching a configured link go out —
+    // the system prompt tells the model never to invent one, but a bad
+    // key from the model must not turn into a broken send. Best-effort:
+    // one failing link doesn't roll back the reply that already sent or
+    // block the rest.
+    if (channel === 'whatsapp' && linkKeys.length > 0 && config.quickLinks.length > 0) {
+      const byKey = new Map(config.quickLinks.map((l) => [l.key, l]))
+      for (const key of linkKeys) {
+        const link = byKey.get(key)
+        if (!link) continue
+        try {
+          await engineSendInteractiveCtaUrl({
+            accountId,
+            userId: configOwnerUserId,
+            conversationId,
+            contactId,
+            bodyText: link.label,
+            displayText: link.label,
+            url: link.url,
+          })
+        } catch (err) {
+          console.warn(
+            `[ai auto-reply] failed to send quick link "${key}":`,
+            err instanceof Error ? err.message : err,
+          )
+        }
+      }
+    }
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
   }

@@ -7,7 +7,12 @@ import {
   type GenerateResult,
   type ToolDefinition,
 } from './types'
-import { HANDOFF_SENTINEL, aiMaxProviderAttempts, aiRequestTimeoutMs } from './defaults'
+import {
+  HANDOFF_SENTINEL,
+  LINK_SENTINEL_PATTERN,
+  aiMaxProviderAttempts,
+  aiRequestTimeoutMs,
+} from './defaults'
 import { generateOpenAi } from './providers/openai'
 import { generateAnthropic } from './providers/anthropic'
 import { generateGemini } from './providers/gemini'
@@ -107,6 +112,24 @@ export function parseGeneration(
   usage: AiUsage | null = null,
 ): GenerateResult {
   const handoff = raw.includes(HANDOFF_SENTINEL)
-  const text = raw.split(HANDOFF_SENTINEL).join('').trim()
-  return { text, handoff, usage }
+
+  // Extract link keys before stripping — dedupe in order of appearance,
+  // a repeated key would otherwise queue the same button twice.
+  const linkKeys: string[] = []
+  const seen = new Set<string>()
+  for (const match of raw.matchAll(LINK_SENTINEL_PATTERN)) {
+    const key = match[1]
+    if (!seen.has(key)) {
+      seen.add(key)
+      linkKeys.push(key)
+    }
+  }
+
+  const text = raw
+    .split(HANDOFF_SENTINEL)
+    .join('')
+    .replace(LINK_SENTINEL_PATTERN, '')
+    .trim()
+
+  return { text, handoff, linkKeys, usage }
 }

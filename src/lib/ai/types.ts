@@ -33,6 +33,19 @@ export interface AiConfig {
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
   embeddingsApiKey: string | null
+  /** Quick links (Google Maps, booking site, etc.) the auto-reply agent
+   *  may offer as tappable CTA-URL buttons — see LINK_SENTINEL in
+   *  defaults.ts and src/lib/ai/auto-reply.ts. */
+  quickLinks: QuickLink[]
+}
+
+/** One configured quick link — `key` is the stable id the model
+ *  references via the `[[LINK:<key>]]` sentinel; `label` is the
+ *  button's visible text (≤ Meta's 20-char button-title limit). */
+export interface QuickLink {
+  key: string
+  label: string
+  url: string
 }
 
 /** One piece of a multimodal turn — plain text, an inlined image, or
@@ -109,10 +122,14 @@ export interface ProviderResult {
 
 /** Outcome of a generation call. */
 export interface GenerateResult {
-  /** The reply text, with any handoff sentinel stripped. */
+  /** The reply text, with any handoff/link sentinels stripped. */
   text: string
   /** True when the model asked to hand off to a human (auto-reply mode). */
   handoff: boolean
+  /** Quick-link keys the model asked to send (auto-reply mode only —
+   *  see LINK_SENTINEL in defaults.ts), in the order they appeared,
+   *  deduplicated. Empty when no quick links are configured or emitted. */
+  linkKeys: string[]
   /** Provider token usage for this call, or null when unavailable. */
   usage: AiUsage | null
 }

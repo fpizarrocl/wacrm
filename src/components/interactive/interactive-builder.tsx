@@ -13,6 +13,7 @@ import {
   validateInteractivePayload,
   type InteractiveButtonsPayload,
   type InteractiveListPayload,
+  type InteractiveCtaUrlPayload,
   type InteractiveMessagePayload,
 } from "@/lib/whatsapp/interactive";
 import { InteractivePreview } from "./interactive-preview";
@@ -52,6 +53,15 @@ export function blankListPayload(): InteractiveListPayload {
   };
 }
 
+export function blankCtaUrlPayload(): InteractiveCtaUrlPayload {
+  return {
+    kind: "cta_url",
+    body: "",
+    displayText: "",
+    url: "",
+  };
+}
+
 interface InteractiveBuilderProps {
   value: InteractiveMessagePayload;
   onChange: (payload: InteractiveMessagePayload) => void;
@@ -77,14 +87,16 @@ export function InteractiveBuilder({
   const setField = (patch: Partial<InteractiveMessagePayload>) =>
     onChange({ ...value, ...patch } as InteractiveMessagePayload);
 
-  const switchKind = (kind: "buttons" | "list") => {
+  const switchKind = (kind: "buttons" | "list" | "cta_url") => {
     if (kind === value.kind) return;
     const shared = { body: value.body, header: value.header, footer: value.footer };
-    onChange(
+    const blank =
       kind === "buttons"
-        ? { ...blankButtonsPayload(), ...shared }
-        : { ...blankListPayload(), ...shared },
-    );
+        ? blankButtonsPayload()
+        : kind === "cta_url"
+          ? blankCtaUrlPayload()
+          : blankListPayload();
+    onChange({ ...blank, ...shared });
   };
 
   return (
@@ -101,6 +113,11 @@ export function InteractiveBuilder({
             active={value.kind === "list"}
             label="List"
             onClick={() => switchKind("list")}
+          />
+          <KindButton
+            active={value.kind === "cta_url"}
+            label="Link button"
+            onClick={() => switchKind("cta_url")}
           />
         </div>
 
@@ -141,6 +158,8 @@ export function InteractiveBuilder({
 
         {value.kind === "buttons" ? (
           <ButtonsEditor value={value} onChange={onChange} advanced={advanced} />
+        ) : value.kind === "cta_url" ? (
+          <CtaUrlEditor value={value} onChange={onChange} />
         ) : (
           <ListEditor value={value} onChange={onChange} advanced={advanced} />
         )}
@@ -252,6 +271,44 @@ function ButtonsEditor({
           Add button
         </Button>
       )}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Link (CTA-URL) editor — a single tappable button that opens a URL.
+// Meta allows exactly one per message, so there's no add/remove here.
+// ------------------------------------------------------------
+
+function CtaUrlEditor({
+  value,
+  onChange,
+}: {
+  value: InteractiveCtaUrlPayload;
+  onChange: (p: InteractiveMessagePayload) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <Field
+        label="Button label"
+        counter={`${value.displayText.length}/${INTERACTIVE_LIMITS.buttonTitleMaxLength}`}
+      >
+        <Input
+          value={value.displayText}
+          maxLength={INTERACTIVE_LIMITS.buttonTitleMaxLength}
+          onChange={(e) => onChange({ ...value, displayText: e.target.value })}
+          placeholder="Cómo llegar"
+          className="bg-muted text-foreground"
+        />
+      </Field>
+      <Field label="URL">
+        <Input
+          value={value.url}
+          onChange={(e) => onChange({ ...value, url: e.target.value })}
+          placeholder="https://maps.google.com/..."
+          className="bg-muted text-foreground"
+        />
+      </Field>
     </div>
   );
 }

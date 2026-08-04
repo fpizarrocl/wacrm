@@ -1840,6 +1840,16 @@
       "saveFailed": "저장하지 못했습니다.",
       "removeSuccess": "도구가 제거되었습니다.",
       "removeFailed": "제거하지 못했습니다."
+    },
+    "aiQuickLinks": {
+      "title": "빠른 링크",
+      "description": "에이전트가 탭 가능한 WhatsApp 버튼으로 제공할 수 있는 링크입니다 — Google 지도, 찾아오는 길 영상, 예약 페이지 등. 에이전트는 라벨을 보고 언제 각 링크가 적절한지 판단합니다.",
+      "empty": "아직 빠른 링크가 없습니다.",
+      "labelPlaceholder": "예: 찾아오는 길",
+      "urlPlaceholder": "https://maps.google.com/...",
+      "keyPlaceholder": "id (모델 내부용)",
+      "addLink": "링크 추가",
+      "showKeys": "id 표시 (고급)"
     }
   }
 }

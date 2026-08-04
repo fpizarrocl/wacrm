@@ -802,6 +802,8 @@ export const INTERACTIVE_LIMITS = {
   bodyMaxLength: 1024,
   footerMaxLength: 60,
   headerTextMaxLength: 60,
+  /** Meta's cap on a `cta_url` button's target URL. */
+  ctaUrlMaxLength: 2000,
 } as const
 
 export interface InteractiveButton {
@@ -1023,6 +1025,102 @@ export async function sendInteractiveList(
 
   const url = `${META_API_BASE}/${phoneNumberId}/messages`
   const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  const data = await response.json()
+  return { messageId: data.messages[0].id }
+}
+
+export interface SendInteractiveCtaUrlArgs {
+  phoneNumberId: string
+  accessToken: string
+  to: string
+  /** The body text — what the customer reads above the button. */
+  bodyText: string
+  /** Visible label on the button (≤ 20 chars per Meta). */
+  displayText: string
+  /** Destination URL the button opens (http/https, ≤ 2000 chars). */
+  url: string
+  /** Optional plain-text header (≤ 60 chars). */
+  headerText?: string
+  /** Optional grey footer line under the button (≤ 60 chars). */
+  footerText?: string
+  /** Meta's message_id of the message being replied to (quote preview). */
+  contextMessageId?: string
+}
+
+function validateCtaUrl(url: string): void {
+  if (!url) throw new Error('Interactive cta_url message requires a url.')
+  if (url.length > INTERACTIVE_LIMITS.ctaUrlMaxLength) {
+    throw new Error(
+      `Interactive cta_url exceeds ${INTERACTIVE_LIMITS.ctaUrlMaxLength} chars.`
+    )
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new Error(`Interactive cta_url "${url}" is not a valid URL.`)
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Interactive cta_url "${url}" must be http(s).`)
+  }
+}
+
+/**
+ * Send an interactive message with a single tappable button that opens
+ * an external URL. Unlike reply buttons / lists, tapping this button
+ * does not send anything back — Meta opens the link directly, so there
+ * is no webhook reply to correlate. Meta allows exactly one `cta_url`
+ * button per message; multiple links need one message each.
+ */
+export async function sendInteractiveCtaUrl(
+  args: SendInteractiveCtaUrlArgs
+): Promise<MetaSendResult> {
+  const {
+    phoneNumberId, accessToken, to,
+    bodyText, displayText, url, headerText, footerText, contextMessageId,
+  } = args
+  validateInteractiveBody(bodyText)
+  validateInteractiveHeaderFooter(headerText, footerText)
+  if (!displayText) throw new Error('Interactive cta_url message requires displayText.')
+  if (displayText.length > INTERACTIVE_LIMITS.buttonTitleMaxLength) {
+    throw new Error(
+      `Interactive cta_url displayText "${displayText}" exceeds ${INTERACTIVE_LIMITS.buttonTitleMaxLength} chars.`
+    )
+  }
+  validateCtaUrl(url)
+
+  const interactive: Record<string, unknown> = {
+    type: 'cta_url',
+    body: { text: bodyText },
+    action: {
+      name: 'cta_url',
+      parameters: { display_text: displayText, url },
+    },
+  }
+  if (headerText) interactive.header = { type: 'text', text: headerText }
+  if (footerText) interactive.footer = { text: footerText }
+
+  const body: Record<string, unknown> = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to,
+    type: 'interactive',
+    interactive,
+  }
+  if (contextMessageId) body.context = { message_id: contextMessageId }
+
+  const requestUrl = `${META_API_BASE}/${phoneNumberId}/messages`
+  const response = await fetch(requestUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

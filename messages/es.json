@@ -1840,6 +1840,16 @@
       "saveFailed": "Error al guardar.",
       "removeSuccess": "Herramienta eliminada.",
       "removeFailed": "Error al eliminar."
+    },
+    "aiQuickLinks": {
+      "title": "Enlaces rápidos",
+      "description": "Links que el agente puede ofrecer como botones tocables de WhatsApp — Google Maps, un video de cómo llegar, tu página de reservas, etc. El agente decide cuándo ofrecer cada uno según la etiqueta.",
+      "empty": "Todavía no hay enlaces rápidos.",
+      "labelPlaceholder": "p. ej. Cómo llegar",
+      "urlPlaceholder": "https://maps.google.com/...",
+      "keyPlaceholder": "id (uso interno del modelo)",
+      "addLink": "Agregar enlace",
+      "showKeys": "Mostrar ids (avanzado)"
     }
   }
 }

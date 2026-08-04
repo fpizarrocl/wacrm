@@ -14,6 +14,7 @@ function config(overrides: Partial<AiConfig> = {}): AiConfig {
     autoReplyMaxPerConversation: 3,
     handoffAgentId: null,
     embeddingsApiKey: null,
+    quickLinks: [],
     ...overrides,
   }
 }
@@ -44,6 +45,7 @@ describe('parseGeneration', () => {
     expect(parseGeneration('Hello there')).toEqual({
       text: 'Hello there',
       handoff: false,
+      linkKeys: [],
       usage: null,
     })
   })
@@ -52,11 +54,13 @@ describe('parseGeneration', () => {
     expect(parseGeneration('[[HANDOFF]]')).toEqual({
       text: '',
       handoff: true,
+      linkKeys: [],
       usage: null,
     })
     expect(parseGeneration('Let me get a human [[HANDOFF]]')).toEqual({
       text: 'Let me get a human',
       handoff: true,
+      linkKeys: [],
       usage: null,
     })
   })
@@ -66,8 +70,24 @@ describe('parseGeneration', () => {
     expect(parseGeneration('Hi', usage)).toEqual({
       text: 'Hi',
       handoff: false,
+      linkKeys: [],
       usage,
     })
+  })
+
+  it('extracts + strips link sentinels, deduped in order', () => {
+    expect(
+      parseGeneration('Sure! [[LINK:maps]] Also here is the video [[LINK:video]] [[LINK:maps]]'),
+    ).toEqual({
+      text: 'Sure!  Also here is the video',
+      handoff: false,
+      linkKeys: ['maps', 'video'],
+      usage: null,
+    })
+  })
+
+  it('returns no link keys when none are present', () => {
+    expect(parseGeneration('Just a normal reply').linkKeys).toEqual([])
   })
 })
 
@@ -90,6 +110,7 @@ describe('generateReply — OpenAI', () => {
     expect(res).toEqual({
       text: 'Sure — happy to help!',
       handoff: false,
+      linkKeys: [],
       usage: { promptTokens: 42, completionTokens: 8, totalTokens: 50 },
     })
     const [url, opts] = fetchMock.mock.calls[0]
@@ -149,6 +170,7 @@ describe('generateReply — Anthropic', () => {
     expect(res).toEqual({
       text: 'Hi there!',
       handoff: false,
+      linkKeys: [],
       usage: { promptTokens: 30, completionTokens: 6, totalTokens: 36 },
     })
     const [url, opts] = fetchMock.mock.calls[0]
@@ -213,6 +235,7 @@ describe('generateReply — Gemini', () => {
     expect(res).toEqual({
       text: 'Hi there!',
       handoff: false,
+      linkKeys: [],
       usage: { promptTokens: 12, completionTokens: 4, totalTokens: 16 },
     })
     const [url, opts] = fetchMock.mock.calls[0]

@@ -68,9 +68,24 @@ export interface InteractiveListPayload {
   sections: InteractiveListSection[]
 }
 
+export interface InteractiveCtaUrlPayload {
+  kind: 'cta_url'
+  /** Body text shown above the button (≤ 1024 chars). */
+  body: string
+  /** Optional plain-text header (≤ 60 chars). */
+  header?: string
+  /** Optional grey footer line (≤ 60 chars). */
+  footer?: string
+  /** Visible label on the button (≤ 20 chars per Meta). */
+  displayText: string
+  /** Destination URL the button opens (http/https). */
+  url: string
+}
+
 export type InteractiveMessagePayload =
   | InteractiveButtonsPayload
   | InteractiveListPayload
+  | InteractiveCtaUrlPayload
 
 export type InteractiveValidation =
   | { ok: true }
@@ -223,7 +238,32 @@ export function validateInteractivePayload(
     return ok()
   }
 
-  return fail('Interactive message must be reply buttons or a list.')
+  if (p.kind === 'cta_url') {
+    const cta = p as InteractiveCtaUrlPayload
+    if (typeof cta.displayText !== 'string' || cta.displayText.trim() === '') {
+      return fail('The link button needs a label.')
+    }
+    if (cta.displayText.length > INTERACTIVE_LIMITS.buttonTitleMaxLength) {
+      return fail(
+        `Link button label "${cta.displayText}" exceeds the ${INTERACTIVE_LIMITS.buttonTitleMaxLength}-character limit.`,
+      )
+    }
+    if (typeof cta.url !== 'string' || cta.url.trim() === '') {
+      return fail('The link button needs a url.')
+    }
+    let parsed: URL
+    try {
+      parsed = new URL(cta.url)
+    } catch {
+      return fail(`"${cta.url}" is not a valid URL.`)
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return fail(`"${cta.url}" must be an http(s) URL.`)
+    }
+    return ok()
+  }
+
+  return fail('Interactive message must be reply buttons, a list, or a link button.')
 }
 
 /**
@@ -235,5 +275,7 @@ export function interactivePayloadPreviewText(
 ): string {
   const body = payload.body?.trim()
   if (body) return body
-  return payload.kind === 'buttons' ? '[buttons]' : '[list]'
+  if (payload.kind === 'buttons') return '[buttons]'
+  if (payload.kind === 'list') return '[list]'
+  return '[link]'
 }

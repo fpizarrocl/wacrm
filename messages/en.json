@@ -1840,6 +1840,16 @@
       "saveFailed": "Failed to save.",
       "removeSuccess": "Tool removed.",
       "removeFailed": "Failed to remove."
+    },
+    "aiQuickLinks": {
+      "title": "Quick links",
+      "description": "Links the auto-reply agent can offer as tappable WhatsApp buttons — Google Maps, a \"how to get there\" video, your booking page, and so on. The agent decides when each is relevant based on the label.",
+      "empty": "No quick links yet.",
+      "labelPlaceholder": "e.g. How to get there",
+      "urlPlaceholder": "https://maps.google.com/...",
+      "keyPlaceholder": "id (used internally by the model)",
+      "addLink": "Add link",
+      "showKeys": "Show ids (advanced)"
     }
   }
 }

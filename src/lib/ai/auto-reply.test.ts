@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   retrieveKnowledge: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
+  engineSendInteractiveCtaUrl: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -21,7 +22,10 @@ vi.mock('./config', () => ({ loadAiConfig: h.loadAiConfig }))
 vi.mock('./context', () => ({ buildConversationContext: h.buildConversationContext }))
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
-vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
+vi.mock('@/lib/flows/meta-send', () => ({
+  engineSendText: h.engineSendText,
+  engineSendInteractiveCtaUrl: h.engineSendInteractiveCtaUrl,
+}))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
@@ -90,6 +94,7 @@ function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     autoReplyMaxPerConversation: 3,
     handoffAgentId: null,
     embeddingsApiKey: null,
+    quickLinks: [],
     ...overrides,
   }
 }
@@ -107,8 +112,9 @@ beforeEach(() => {
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
   h.retrieveKnowledge.mockResolvedValue([])
-  h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
+  h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false, linkKeys: [] })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
+  h.engineSendInteractiveCtaUrl.mockResolvedValue({ whatsapp_message_id: 'm2' })
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
@@ -238,5 +244,79 @@ describe('dispatchInboundToAiReply — handoff', () => {
     )
     expect(h.state.rpcCalls).toHaveLength(0) // no reply-slot claim on handoff
     expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
+  })
+})
+
+describe('dispatchInboundToAiReply — quick links', () => {
+  const QUICK_LINKS = [
+    { key: 'maps', label: 'Cómo llegar', url: 'https://maps.example.com/x' },
+    { key: 'booking', label: 'Reservar', url: 'https://booking.example.com' },
+  ]
+
+  it('sends a CTA-URL message per link key the model emitted, after the text reply', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ quickLinks: QUICK_LINKS }))
+    h.generateReply.mockResolvedValue({
+      text: 'Here you go!',
+      handoff: false,
+      linkKeys: ['maps', 'booking'],
+    })
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Here you go!' }),
+    )
+    expect(h.engineSendInteractiveCtaUrl).toHaveBeenCalledTimes(2)
+    expect(h.engineSendInteractiveCtaUrl).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        contactId: 'contact-1',
+        displayText: 'Cómo llegar',
+        url: 'https://maps.example.com/x',
+      }),
+    )
+    expect(h.engineSendInteractiveCtaUrl).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        displayText: 'Reservar',
+        url: 'https://booking.example.com',
+      }),
+    )
+  })
+
+  it('ignores a link key the model invented that is not configured', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ quickLinks: QUICK_LINKS }))
+    h.generateReply.mockResolvedValue({
+      text: 'Here you go!',
+      handoff: false,
+      linkKeys: ['maps', 'made-up'],
+    })
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.engineSendInteractiveCtaUrl).toHaveBeenCalledTimes(1)
+    expect(h.engineSendInteractiveCtaUrl).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'https://maps.example.com/x' }),
+    )
+  })
+
+  it('does not send any link when the account has none configured, even if the model emits a key', async () => {
+    h.generateReply.mockResolvedValue({
+      text: 'Here you go!',
+      handoff: false,
+      linkKeys: ['maps'],
+    })
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.engineSendInteractiveCtaUrl).not.toHaveBeenCalled()
+  })
+
+  it('keeps sending the rest of the links when one fails', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ quickLinks: QUICK_LINKS }))
+    h.generateReply.mockResolvedValue({
+      text: 'Here you go!',
+      handoff: false,
+      linkKeys: ['maps', 'booking'],
+    })
+    h.engineSendInteractiveCtaUrl.mockRejectedValueOnce(new Error('Meta 500'))
+    await expect(dispatchInboundToAiReply(ARGS)).resolves.toBeUndefined()
+    expect(h.engineSendInteractiveCtaUrl).toHaveBeenCalledTimes(2)
   })
 })

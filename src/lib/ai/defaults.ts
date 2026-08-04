@@ -1,4 +1,4 @@
-import type { AiProvider } from './types'
+import type { AiProvider, QuickLink } from './types'
 
 // ============================================================
 // Tunables + prompt scaffold for the AI reply assistant.
@@ -49,6 +49,24 @@ export function clampTemperature(value: number): number {
  */
 export const HANDOFF_SENTINEL = '[[HANDOFF]]'
 
+/**
+ * Sentinel the model is instructed to emit (in auto-reply mode, only
+ * when the account has quick links configured) to hand a customer a
+ * tappable CTA-URL button for one of those links — e.g. `[[LINK:maps]]`.
+ * Parsed and stripped by `parseGeneration`; the matching `key` must be
+ * one of the account's configured quick links, or it's ignored (see
+ * `src/lib/ai/auto-reply.ts`).
+ *
+ * `linkSentinel` builds the literal text for a given key (used in the
+ * system prompt example); `LINK_SENTINEL_PATTERN` is the matching regex
+ * `generate.ts` uses to extract keys from the model's output — keep the
+ * two in sync if the format ever changes.
+ */
+export function linkSentinel(key: string): string {
+  return `[[LINK:${key}]]`
+}
+export const LINK_SENTINEL_PATTERN = /\[\[LINK:([a-zA-Z0-9_-]+)\]\]/g
+
 /** Cap on generated reply length — keeps WhatsApp replies short and
  *  bounds token spend on the caller's own key. */
 export const MAX_OUTPUT_TOKENS = 1024
@@ -90,8 +108,12 @@ export function buildSystemPrompt(args: {
   mode: 'draft' | 'auto_reply'
   /** Knowledge-base excerpts retrieved for the current question. */
   knowledge?: string[]
+  /** Configured quick links (auto-reply mode only — see LINK_SENTINEL_PATTERN
+   *  above). Omitted/empty accounts get no instructions about them, so the
+   *  model never emits a link sentinel it wasn't told about. */
+  quickLinks?: QuickLink[]
 }): string {
-  const { userPrompt, mode, knowledge } = args
+  const { userPrompt, mode, knowledge, quickLinks } = args
   const parts: string[] = [
     'You are a customer-messaging assistant for a business that uses a WhatsApp CRM. ' +
       'You are shown the recent WhatsApp conversation between the business (assistant) and a customer (user). ' +
@@ -105,6 +127,14 @@ export function buildSystemPrompt(args: {
   if (mode === 'auto_reply') {
     parts.push(
       `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — write a short, natural reply that keeps the conversation feeling human (e.g. that you're looking into it and will follow up shortly). Never mention that you are an AI/bot, that you are transferring or escalating the chat, or that a different person will take over — the customer should feel like they're still talking to the same person. Then, on a new line by itself, output exactly ${HANDOFF_SENTINEL}. A human agent will silently take over from there. Prefer handing off over guessing.`,
+    )
+  }
+
+  if (mode === 'auto_reply' && quickLinks && quickLinks.length > 0) {
+    parts.push(
+      'You can hand the customer a tappable button that opens one of these links, when it is clearly useful to them (e.g. they ask how to get somewhere, or how to book): ' +
+        quickLinks.map((l) => `key "${l.key}" = ${l.label}`).join('; ') +
+        `. To send one, output exactly ${linkSentinel('<key>')} on its own, using exactly one of the keys above — never invent a key. You can emit more than one if more than one is relevant. Each is sent as its own message right after this reply, so keep your own text natural and don't also paste the raw URL.`,
     )
   }
 

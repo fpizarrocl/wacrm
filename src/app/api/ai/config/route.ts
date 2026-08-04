@@ -9,10 +9,72 @@ import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { embedTexts } from '@/lib/ai/embeddings'
 import { clampTemperature, DEFAULT_TEMPERATURE } from '@/lib/ai/defaults'
-import { AiError, type AiProvider } from '@/lib/ai/types'
+import { AiError, type AiProvider, type QuickLink } from '@/lib/ai/types'
+import { INTERACTIVE_LIMITS } from '@/lib/whatsapp/meta-api'
 
 function bad(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
+}
+
+const QUICK_LINK_KEY_PATTERN = /^[a-zA-Z0-9_-]+$/
+const MAX_QUICK_LINKS = 10
+
+/**
+ * Validate + normalize the account's quick-link buttons (Settings →
+ * Agente IA — see `src/lib/ai/auto-reply.ts` / `defaults.ts`). `key` is
+ * what the model references via the `[[LINK:<key>]]` sentinel; `label`
+ * becomes a WhatsApp CTA-URL button's visible text, so it shares Meta's
+ * `buttonTitleMaxLength` (20 chars) limit.
+ *
+ * Absent `raw` (form didn't send the field) → `[]`, same "leave it
+ * empty" default as a brand-new config. Anything malformed → an error
+ * string the route surfaces as a 400 before touching the DB.
+ */
+function parseQuickLinks(raw: unknown): QuickLink[] | { error: string } {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) return { error: 'quick_links must be an array' }
+  if (raw.length > MAX_QUICK_LINKS) {
+    return { error: `quick_links allows at most ${MAX_QUICK_LINKS} links` }
+  }
+  const seen = new Set<string>()
+  const links: QuickLink[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      return { error: 'Each quick link must be an object' }
+    }
+    const record = item as Record<string, unknown>
+    const key = typeof record.key === 'string' ? record.key.trim() : ''
+    const label = typeof record.label === 'string' ? record.label.trim() : ''
+    const url = typeof record.url === 'string' ? record.url.trim() : ''
+
+    if (!key || !QUICK_LINK_KEY_PATTERN.test(key)) {
+      return {
+        error: `Quick link key "${key}" must be non-empty and contain only letters, numbers, "_" or "-"`,
+      }
+    }
+    if (seen.has(key)) return { error: `Duplicate quick link key "${key}"` }
+    seen.add(key)
+
+    if (!label) return { error: 'Every quick link needs a label' }
+    if (label.length > INTERACTIVE_LIMITS.buttonTitleMaxLength) {
+      return {
+        error: `Quick link label "${label}" exceeds ${INTERACTIVE_LIMITS.buttonTitleMaxLength} characters`,
+      }
+    }
+
+    if (!url) return { error: 'Every quick link needs a url' }
+    try {
+      const parsed = new URL(url)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return { error: `Quick link url "${url}" must be http(s)` }
+      }
+    } catch {
+      return { error: `Quick link url "${url}" is not a valid URL` }
+    }
+
+    links.push({ key, label, url })
+  }
+  return links
 }
 
 /**
@@ -31,7 +93,7 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, temperature, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key',
+        'provider, model, temperature, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key, quick_links',
       )
       .eq('account_id', accountId)
       .maybeSingle()
@@ -100,6 +162,10 @@ export async function POST(request: Request) {
     let maxPer = Number(body.auto_reply_max_per_conversation)
     if (!Number.isFinite(maxPer)) maxPer = 3
     maxPer = Math.min(20, Math.max(1, Math.floor(maxPer)))
+
+    const quickLinksResult = parseQuickLinks(body.quick_links)
+    if ('error' in quickLinksResult) return bad(quickLinksResult.error)
+    const quickLinks = quickLinksResult
 
     // Handoff routing target for auto-reply. A non-empty string must be a
     // member of this account (else the conversation would be assigned to a
@@ -174,6 +240,7 @@ export async function POST(request: Request) {
           autoReplyMaxPerConversation: maxPer,
           handoffAgentId: null,
           embeddingsApiKey: null,
+          quickLinks: [],
         })
       } catch (err) {
         if (err instanceof AiError) {
@@ -213,6 +280,7 @@ export async function POST(request: Request) {
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,
       auto_reply_max_per_conversation: maxPer,
+      quick_links: quickLinks,
     }
     // Only touch the handoff target when the form actually sent the field,
     // so a partial save (e.g. flipping a toggle) doesn't wipe it.

@@ -28,6 +28,7 @@ import {
 import { SettingsPanelHead } from './settings-panel-head';
 import { AiKnowledgeCard } from './ai-knowledge';
 import { AiToolsCard } from './ai-tools';
+import { AiQuickLinksCard, type QuickLinkRow } from './ai-quick-links';
 import {
   AI_PROVIDER_DEFAULT_MODEL,
   GEMINI_SUGGESTED_MODELS,
@@ -88,6 +89,7 @@ export function AiConfig() {
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
+  const [quickLinks, setQuickLinks] = useState<QuickLinkRow[]>([]);
 
   // Guard keyed on the account (not a bare boolean) so an in-place
   // account switch — ownership transfer, multi-account membership —
@@ -122,6 +124,7 @@ export function AiConfig() {
         setHasStoredEmbeddingsKey(Boolean(data.has_embeddings_key));
         setEmbeddingsKey(data.has_embeddings_key ? MASKED_KEY : '');
         setEmbeddingsKeyEdited(false);
+        setQuickLinks(Array.isArray(data.quick_links) ? data.quick_links : []);
       }
     } catch {
       toast.error(t('loadFailed'));
@@ -166,6 +169,9 @@ export function AiConfig() {
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
     handoff_agent_id: handoffAgentId || null,
+    quick_links: quickLinks
+      .map((l) => ({ key: l.key.trim(), label: l.label.trim(), url: l.url.trim() }))
+      .filter((l) => l.label || l.url),
   });
 
   const handleTest = async () => {
@@ -236,6 +242,7 @@ export function AiConfig() {
         setTemperature(DEFAULT_TEMPERATURE);
         setSystemPrompt('');
         setHandoffAgentId('');
+        setQuickLinks([]);
       } else {
         const data = await res.json();
         toast.error(data.error ?? t('removeFailed'));
@@ -529,6 +536,12 @@ export function AiConfig() {
             </div>
           </CardContent>
         </Card>
+
+        <AiQuickLinksCard
+          value={quickLinks}
+          onChange={setQuickLinks}
+          disabled={disabled}
+        />
 
         <AiKnowledgeCard
           accountId={accountId}
