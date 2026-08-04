@@ -3,7 +3,7 @@ import { loadAiConfig } from './config'
 import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
-import { buildSystemPrompt } from './defaults'
+import { buildSystemPrompt, isAutoReplyWindowExpired } from './defaults'
 import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
@@ -79,15 +79,25 @@ export async function dispatchInboundToAiReply(
 
     const { data: conv, error: convErr } = await db
       .from('conversations')
-      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count, channel')
+      .select(
+        'assigned_agent_id, ai_autoreply_disabled, ai_reply_count, ai_reply_window_started_at, channel',
+      )
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr || !conv) return
     if (conv.assigned_agent_id) return // a human owns this thread
     if (conv.ai_autoreply_disabled) return // handed off / turned off here
-    // Cheap early-out; the authoritative cap check is the atomic claim
-    // below (this read can race a concurrent inbound).
-    if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
+    // Cheap early-out; the authoritative cap+reset check is the atomic
+    // claim below (this read can race a concurrent inbound). Mirrors
+    // claim_ai_reply_slot's own reset-window logic (migration 050) so a
+    // capped thread isn't stuck bailing here forever once its window
+    // has actually expired.
+    if (
+      conv.ai_reply_count >= config.autoReplyMaxPerConversation &&
+      !isAutoReplyWindowExpired(conv.ai_reply_window_started_at, config.autoReplyResetHours)
+    ) {
+      return
+    }
 
     // WhatsApp keeps its existing send path (phone-variant retry,
     // template plumbing via engineSendText). Instagram/Messenger
@@ -243,6 +253,8 @@ export async function dispatchInboundToAiReply(
       {
         conversation_id: conversationId,
         max_replies: config.autoReplyMaxPerConversation,
+        reset_after_hours:
+          config.autoReplyResetHours > 0 ? config.autoReplyResetHours : null,
       },
     )
     if (claimErr) {

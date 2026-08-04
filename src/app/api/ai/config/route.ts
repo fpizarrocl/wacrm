@@ -8,7 +8,11 @@ import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { embedTexts } from '@/lib/ai/embeddings'
-import { clampTemperature, DEFAULT_TEMPERATURE } from '@/lib/ai/defaults'
+import {
+  clampTemperature,
+  DEFAULT_TEMPERATURE,
+  clampAutoReplyResetHours,
+} from '@/lib/ai/defaults'
 import { AiError, type AiProvider, type QuickLink } from '@/lib/ai/types'
 import { INTERACTIVE_LIMITS } from '@/lib/whatsapp/meta-api'
 
@@ -93,7 +97,7 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, temperature, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key, quick_links',
+        'provider, model, temperature, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, auto_reply_reset_hours, handoff_agent_id, api_key, embeddings_api_key, quick_links',
       )
       .eq('account_id', accountId)
       .maybeSingle()
@@ -162,6 +166,8 @@ export async function POST(request: Request) {
     let maxPer = Number(body.auto_reply_max_per_conversation)
     if (!Number.isFinite(maxPer)) maxPer = 3
     maxPer = Math.min(20, Math.max(1, Math.floor(maxPer)))
+
+    const resetHours = clampAutoReplyResetHours(Number(body.auto_reply_reset_hours))
 
     const quickLinksResult = parseQuickLinks(body.quick_links)
     if ('error' in quickLinksResult) return bad(quickLinksResult.error)
@@ -238,6 +244,7 @@ export async function POST(request: Request) {
           isActive,
           autoReplyEnabled,
           autoReplyMaxPerConversation: maxPer,
+          autoReplyResetHours: resetHours,
           handoffAgentId: null,
           embeddingsApiKey: null,
           quickLinks: [],
@@ -280,6 +287,7 @@ export async function POST(request: Request) {
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,
       auto_reply_max_per_conversation: maxPer,
+      auto_reply_reset_hours: resetHours,
       quick_links: quickLinks,
     }
     // Only touch the handoff target when the form actually sent the field,

@@ -1139,6 +1139,8 @@ export function MessageThread({
       <AiThreadBanner
         conversationId={conversation.id}
         disabled={conversation.ai_autoreply_disabled ?? false}
+        replyCount={conversation.ai_reply_count ?? 0}
+        windowStartedAt={conversation.ai_reply_window_started_at ?? null}
         handoffSummary={conversation.ai_handoff_summary}
         assignedAgentId={assignedAgentId}
         currentUserId={user?.id}

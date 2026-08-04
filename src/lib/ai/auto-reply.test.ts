@@ -92,6 +92,7 @@ function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     isActive: true,
     autoReplyEnabled: true,
     autoReplyMaxPerConversation: 3,
+    autoReplyResetHours: 0,
     handoffAgentId: null,
     embeddingsApiKey: null,
     quickLinks: [],
@@ -123,7 +124,7 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.state.rpcCalls).toEqual([
       {
         name: 'claim_ai_reply_slot',
-        args: { conversation_id: 'conv-1', max_replies: 3 },
+        args: { conversation_id: 'conv-1', max_replies: 3, reset_after_hours: null },
       },
     ])
     expect(h.engineSendText).toHaveBeenCalledWith(
@@ -195,6 +196,45 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     }
     await dispatchInboundToAiReply(ARGS)
     expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('passes reset_after_hours to the atomic claim (null when auto-reset is off)', async () => {
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.state.rpcCalls[0]).toMatchObject({
+      name: 'claim_ai_reply_slot',
+      args: expect.objectContaining({ reset_after_hours: null }),
+    })
+  })
+
+  it('still skips a capped conversation when the reset window has not expired yet', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ autoReplyResetHours: 24 }))
+    h.state.conv = {
+      assigned_agent_id: null,
+      ai_autoreply_disabled: false,
+      ai_reply_count: 3,
+      ai_reply_window_started_at: new Date().toISOString(),
+    }
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('lets a capped conversation reply again once its reset window has expired', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ autoReplyResetHours: 24 }))
+    h.state.conv = {
+      assigned_agent_id: null,
+      ai_autoreply_disabled: false,
+      ai_reply_count: 3,
+      ai_reply_window_started_at: new Date(Date.now() - 25 * 3600_000).toISOString(),
+    }
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Hello!' }),
+    )
+    expect(h.state.rpcCalls[0]).toMatchObject({
+      name: 'claim_ai_reply_slot',
+      args: expect.objectContaining({ reset_after_hours: 24 }),
+    })
   })
 
   it('skips when there is nothing to reply to', async () => {

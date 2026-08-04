@@ -187,11 +187,15 @@ export interface Conversation {
    *    over, or the model handed off). Sticky until re-enabled.
    *  - `ai_reply_count` — how many times the bot has auto-replied,
    *    checked against the account's per-conversation cap.
+   *  - `ai_reply_window_started_at` — when the current reply-count cycle
+   *    began (migration 050); the count resets on its own this many
+   *    hours later (`ai_configs.auto_reply_reset_hours`).
    *  - `ai_handoff_summary` — short internal note the bot wrote when it
    *    handed off, shown to whoever takes the thread over.
    */
   ai_autoreply_disabled?: boolean;
   ai_reply_count?: number;
+  ai_reply_window_started_at?: string | null;
   ai_handoff_summary?: string | null;
 }
 

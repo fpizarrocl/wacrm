@@ -273,6 +273,7 @@
     },
     "aiBanner": {
       "pausedTitle": "El asistente de IA está pausado aquí",
+      "limitReachedTitle": "El asistente de IA alcanzó el límite de respuestas para esta conversación",
       "activeText": "El asistente de IA está respondiendo automáticamente",
       "takeOver": "Tomar el control",
       "resume": "Reanudar IA",
@@ -1738,6 +1739,8 @@
       "autoReplyDesc": "El bot responde automáticamente los mensajes entrantes nuevos (solo cuando ningún flow los gestiona y no hay un agente asignado). Transfiere a un humano cuando no puede ayudar.",
       "maxAutoReplies": "Máximo de respuestas automáticas por conversación",
       "maxAutoRepliesDesc": "Después de este número de respuestas del bot en un mismo hilo, el bot se queda callado.",
+      "resetWindowHours": "Ventana de reinicio (horas)",
+      "resetWindowHoursDesc": "El límite de respuestas se renueva solo este número de horas después de la primera respuesta del ciclo actual. 0 = nunca se reinicia solo — un humano tiene que reanudar el bot manualmente.",
       "handoffTo": "Transferir a",
       "handoffToDesc": "Cuando el bot no puede ayudar — o alcanza el límite de respuestas — se pausa y enruta el chat aquí, con una breve nota sobre lo ocurrido.",
       "handoffQueue": "Cola sin asignar (cualquier agente puede tomarla)",

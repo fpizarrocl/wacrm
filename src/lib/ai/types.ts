@@ -25,6 +25,10 @@ export interface AiConfig {
   isActive: boolean
   autoReplyEnabled: boolean
   autoReplyMaxPerConversation: number
+  /** Hours after the first reply of the current cycle before a
+   *  conversation's reply count resets on its own (migration 050). 0 =
+   *  never auto-reset (the old permanent-cap behavior). */
+  autoReplyResetHours: number
   /** Where auto-reply hands a conversation off when the model bails: an
    *  agent's `auth.users.id`, or null to leave it unassigned (drop into
    *  the shared queue). */

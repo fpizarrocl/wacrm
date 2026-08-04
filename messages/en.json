@@ -273,6 +273,7 @@
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
+      "limitReachedTitle": "AI assistant reached its reply limit for this conversation",
       "activeText": "AI assistant is replying automatically",
       "takeOver": "Take over",
       "resume": "Resume AI",
@@ -1738,6 +1739,8 @@
       "autoReplyDesc": "The bot answers new inbound messages automatically (only when no flow handles them and no agent is assigned). Hands off to a human when it can’t help.",
       "maxAutoReplies": "Max auto-replies per conversation",
       "maxAutoRepliesDesc": "After this many bot replies in one thread, the bot goes quiet.",
+      "resetWindowHours": "Reset window (hours)",
+      "resetWindowHoursDesc": "The reply cap renews this many hours after the first bot reply in the current cycle. 0 = never reset automatically — a human has to resume the bot.",
       "handoffTo": "Hand off to",
       "handoffToDesc": "When the bot can’t help — or hits the reply cap — it pauses and routes the chat here, with a short note on what happened.",
       "handoffQueue": "Unassigned queue (any agent can pick it up)",

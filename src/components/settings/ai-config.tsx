@@ -35,6 +35,7 @@ import {
   DEFAULT_TEMPERATURE,
   TEMPERATURE_MIN,
   TEMPERATURE_MAX,
+  DEFAULT_AUTO_REPLY_RESET_HOURS,
 } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
@@ -86,6 +87,7 @@ export function AiConfig() {
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [maxPerConversation, setMaxPerConversation] = useState(3);
+  const [resetHours, setResetHours] = useState(DEFAULT_AUTO_REPLY_RESET_HOURS);
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
@@ -117,6 +119,9 @@ export function AiConfig() {
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
+        setResetHours(
+          data.auto_reply_reset_hours ?? DEFAULT_AUTO_REPLY_RESET_HOURS,
+        );
         setHandoffAgentId(data.handoff_agent_id ?? '');
         setHasStoredKey(Boolean(data.has_key));
         setApiKey(data.has_key ? MASKED_KEY : '');
@@ -168,6 +173,7 @@ export function AiConfig() {
     is_active: isActive,
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
+    auto_reply_reset_hours: resetHours,
     handoff_agent_id: handoffAgentId || null,
     quick_links: quickLinks
       .map((l) => ({ key: l.key.trim(), label: l.label.trim(), url: l.url.trim() }))
@@ -500,6 +506,29 @@ export function AiConfig() {
                 onChange={(e) =>
                   setMaxPerConversation(
                     Math.min(20, Math.max(1, Number(e.target.value) || 1)),
+                  )
+                }
+                disabled={disabled || !autoReplyEnabled}
+                className="w-20"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label htmlFor="ai-reset-hours">{t('resetWindowHours')}</Label>
+                <p className="text-xs text-muted-foreground">
+                  {t('resetWindowHoursDesc')}
+                </p>
+              </div>
+              <Input
+                id="ai-reset-hours"
+                type="number"
+                min={0}
+                max={168}
+                value={resetHours}
+                onChange={(e) =>
+                  setResetHours(
+                    Math.min(168, Math.max(0, Number(e.target.value) || 0)),
                   )
                 }
                 disabled={disabled || !autoReplyEnabled}

@@ -43,6 +43,43 @@ export function clampTemperature(value: number): number {
 }
 
 /**
+ * Auto-reply reply-cap reset window, in hours (migration 050). 0 means
+ * "never auto-reset" — the pre-050 permanent-cap behavior, kept as an
+ * explicit opt-out. Default matches WhatsApp's own 24h session window.
+ */
+export const AUTO_REPLY_RESET_HOURS_MIN = 0
+export const AUTO_REPLY_RESET_HOURS_MAX = 168
+export const DEFAULT_AUTO_REPLY_RESET_HOURS = 24
+
+export function clampAutoReplyResetHours(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_AUTO_REPLY_RESET_HOURS
+  return Math.min(
+    AUTO_REPLY_RESET_HOURS_MAX,
+    Math.max(AUTO_REPLY_RESET_HOURS_MIN, Math.floor(value)),
+  )
+}
+
+/**
+ * Whether a conversation's reply-count window has aged past the
+ * account's reset window — the same rule `claim_ai_reply_slot` applies
+ * atomically in SQL (migration 050), replicated here so the server's
+ * cheap early-out (`auto-reply.ts`) and the inbox banner
+ * (`ai-thread-banner.tsx`) don't drift from the authoritative check.
+ * `resetHours <= 0` means auto-reset is off; a missing/invalid
+ * `windowStartedAt` (no reply sent yet in the current cycle) is never
+ * "expired".
+ */
+export function isAutoReplyWindowExpired(
+  windowStartedAt: string | null | undefined,
+  resetHours: number,
+): boolean {
+  if (resetHours <= 0 || !windowStartedAt) return false
+  const started = new Date(windowStartedAt).getTime()
+  if (!Number.isFinite(started)) return false
+  return Date.now() - started > resetHours * 3600_000
+}
+
+/**
  * Sentinel the model is instructed to emit (in auto-reply mode) when it
  * can't confidently help and a human should take over. Parsed and
  * stripped by `generateReply`.
