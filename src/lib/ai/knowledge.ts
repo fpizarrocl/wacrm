@@ -145,5 +145,27 @@ export async function retrieveKnowledge(
     }
   }
 
+  // Fuzzy top-up (trigram word-similarity, migration 051) — catches
+  // morphological misses the exact-lexeme lexical path can't (plural/
+  // singular, gender, accents, small typos) without a per-language
+  // stemmer. Same "top up to k" pattern as the lexical block above.
+  if (picked.size < k) {
+    try {
+      const { data, error } = await db.rpc('match_ai_knowledge_trgm', {
+        p_account_id: accountId,
+        p_query: query,
+        p_match_count: k,
+      })
+      if (!error && Array.isArray(data)) {
+        for (const row of data as MatchRow[]) {
+          if (picked.size >= k) break
+          if (!picked.has(row.id)) picked.set(row.id, row.content)
+        }
+      }
+    } catch (err) {
+      console.error('[ai knowledge] trigram retrieval failed:', err)
+    }
+  }
+
   return Array.from(picked.values()).slice(0, k)
 }

@@ -12,6 +12,7 @@ import { retrieveKnowledge, ingestDocument } from './knowledge'
 interface FakeState {
   semantic: { id: string; content: string }[]
   fts: { id: string; content: string }[]
+  trgm: { id: string; content: string }[]
   chunkCount: number
   rpcCalls: string[]
   inserted: Record<string, unknown>[] | null
@@ -22,6 +23,7 @@ function makeDb() {
   const state: FakeState = {
     semantic: [],
     fts: [],
+    trgm: [],
     chunkCount: 5, // account has a non-empty KB by default
     rpcCalls: [],
     inserted: null,
@@ -34,6 +36,8 @@ function makeDb() {
         return Promise.resolve({ data: state.semantic, error: null })
       if (name === 'match_ai_knowledge_fts')
         return Promise.resolve({ data: state.fts, error: null })
+      if (name === 'match_ai_knowledge_trgm')
+        return Promise.resolve({ data: state.trgm, error: null })
       return Promise.resolve({ data: null, error: null })
     },
     from: () => ({
@@ -84,7 +88,10 @@ describe('retrieveKnowledge', () => {
     state.fts = [{ id: 'f1', content: 'F1' }]
     const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'q')
     expect(out).toEqual(['F1'])
-    expect(state.rpcCalls).toEqual(['match_ai_knowledge_fts'])
+    // k defaults to 5 and FTS only found 1, so the trgm top-up still
+    // fires (and finds nothing extra here) — see the dedicated trgm
+    // tests below for its own behavior.
+    expect(state.rpcCalls).toEqual(['match_ai_knowledge_fts', 'match_ai_knowledge_trgm'])
     expect(h.embedTexts).not.toHaveBeenCalled()
   })
 
@@ -112,6 +119,33 @@ describe('retrieveKnowledge', () => {
       { id: 's2', content: 'S2-dup' }, // dedup by id
       { id: 'f1', content: 'F1' },
     ]
+    const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: 'sk-x' }, 'q', 3)
+    expect(out).toEqual(['S1', 'S2', 'F1'])
+    expect(state.rpcCalls).toEqual([
+      'match_ai_knowledge_semantic',
+      'match_ai_knowledge_fts',
+    ])
+  })
+
+  it('tops up with a fuzzy trigram match and dedupes when semantic+FTS are short', async () => {
+    const { db, state } = makeDb()
+    state.fts = [{ id: 'f1', content: 'F1' }]
+    state.trgm = [
+      { id: 'f1', content: 'F1-dup' }, // dedup by id
+      { id: 't1', content: 'T1' },
+    ]
+    const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: null }, 'q', 3)
+    expect(out).toEqual(['F1', 'T1'])
+    expect(state.rpcCalls).toEqual(['match_ai_knowledge_fts', 'match_ai_knowledge_trgm'])
+  })
+
+  it('does not call the trigram fallback once semantic+FTS already filled k', async () => {
+    const { db, state } = makeDb()
+    state.semantic = [
+      { id: 's1', content: 'S1' },
+      { id: 's2', content: 'S2' },
+    ]
+    state.fts = [{ id: 'f1', content: 'F1' }]
     const out = await retrieveKnowledge(db, 'acct', { embeddingsApiKey: 'sk-x' }, 'q', 3)
     expect(out).toEqual(['S1', 'S2', 'F1'])
     expect(state.rpcCalls).toEqual([
