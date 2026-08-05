@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 
 /** Strips a previously-applied "(N) " badge back off, so re-applying
  *  never compounds into "(1) (1) Bandeja...". */
@@ -13,6 +12,13 @@ const BADGE_PREFIX = /^\(\d+\)\s/;
  * onto whatever title the current page already has. Headless, renders
  * nothing.
  *
+ * Takes the count as a prop rather than calling `useUnreadNotifications`
+ * itself — that hook opens its own realtime channel + fires its own
+ * initial count query, and this is mounted alongside the sidebar (which
+ * already needs the same value), so a second independent subscription
+ * would double that load on every dashboard mount for no reason. Share
+ * the one call from `DashboardShellInner` instead.
+ *
  * Re-applies on every route change too, not just on count change: Next
  * resets `document.title` to the page's clean SSR title on navigation,
  * which would otherwise silently drop the badge on a page that didn't
@@ -20,8 +26,7 @@ const BADGE_PREFIX = /^\(\d+\)\s/;
  * itself after Next's own title update on the same navigation, rather
  * than racing it.
  */
-export function NotificationTitleBadge() {
-  const unread = useUnreadNotifications();
+export function NotificationTitleBadge({ unread }: { unread: number }) {
   const pathname = usePathname();
 
   useEffect(() => {

@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { NotificationTitleBadge } from "@/components/layout/notification-title-badge";
+import { useUnreadNotifications } from "@/hooks/use-unread-notifications";
 import type { Branding } from "@/lib/branding";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
@@ -27,6 +28,11 @@ function DashboardShellInner({
   // always visible and this stays at `false` (ignored by the component).
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+  // Single shared subscription — the sidebar badge and the tab-title
+  // badge both need this count, and each opening its own realtime
+  // channel + firing its own initial query would double that load on
+  // every dashboard mount for no reason.
+  const unreadNotifications = useUnreadNotifications();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -53,8 +59,13 @@ function DashboardShellInner({
           signed in. Headless — renders nothing. */}
       <PresenceHeartbeat />
       {/* "(N) " unread badge on the browser tab title. Headless. */}
-      <NotificationTitleBadge />
-      <Sidebar open={sidebarOpen} onClose={closeSidebar} branding={branding} />
+      <NotificationTitleBadge unread={unreadNotifications} />
+      <Sidebar
+        open={sidebarOpen}
+        onClose={closeSidebar}
+        branding={branding}
+        unreadNotifications={unreadNotifications}
+      />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
         {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
