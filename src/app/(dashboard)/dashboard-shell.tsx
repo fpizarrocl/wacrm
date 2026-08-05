@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
+import { NotificationTitleBadge } from "@/components/layout/notification-title-badge";
 import type { Branding } from "@/lib/branding";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
@@ -51,6 +52,8 @@ function DashboardShellInner({
       {/* Reports this tab's online/away presence once we know a user is
           signed in. Headless — renders nothing. */}
       <PresenceHeartbeat />
+      {/* "(N) " unread badge on the browser tab title. Headless. */}
+      <NotificationTitleBadge />
       <Sidebar open={sidebarOpen} onClose={closeSidebar} branding={branding} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
