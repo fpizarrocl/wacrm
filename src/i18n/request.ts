@@ -4,11 +4,11 @@ import { LOCALE_COOKIE, isSupportedLocale } from '@/lib/i18n/locales';
 
 export default getRequestConfig(async () => {
   // Prefer the user's explicit choice (set by the language switcher via a
-  // cookie). Fall back to the environment default, then 'en'.
+  // cookie). Fall back to the environment default, then 'es'.
   const cookieLocale = (await cookies()).get(LOCALE_COOKIE)?.value;
   const locale = isSupportedLocale(cookieLocale)
     ? cookieLocale
-    : process.env.NEXT_PUBLIC_APP_LOCALE || 'en';
+    : process.env.NEXT_PUBLIC_APP_LOCALE || 'es';
 
   let messages;
   try {
