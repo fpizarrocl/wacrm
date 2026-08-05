@@ -319,19 +319,22 @@ export async function dispatchInboundToAiReply(
 
     await sendReply(text)
 
-    // The AI is handling this thread on its own — don't leave it
-    // looking "Abierta" (needing a human) in the inbox. Only downgrades
-    // from 'open': never touches 'pending' (already there) or 'closed'
-    // (an agent's own call, not ours to override). Best-effort — a
-    // failure here must never roll back the reply that already sent.
-    if (conv.status === 'open') {
-      const { error: statusErr } = await db
-        .from('conversations')
-        .update({ status: 'pending' })
-        .eq('id', conversationId)
-      if (statusErr) {
-        console.warn('[ai auto-reply] failed to downgrade status to pending:', statusErr)
-      }
+    // The AI just answered this on its own — the customer's inbound
+    // that bumped unread_count no longer needs a human's eyes, so clear
+    // it every time. Status only downgrades from 'open' (never touches
+    // 'pending' — already there — or 'closed', an agent's own call, not
+    // ours to override), but unread_count resets regardless of status:
+    // it isn't ours to leave stale just because the thread is closed.
+    // Best-effort — a failure here must never roll back the reply that
+    // already sent.
+    const readUpdate: Record<string, unknown> = { unread_count: 0 }
+    if (conv.status === 'open') readUpdate.status = 'pending'
+    const { error: readErr } = await db
+      .from('conversations')
+      .update(readUpdate)
+      .eq('id', conversationId)
+    if (readErr) {
+      console.warn('[ai auto-reply] failed to mark conversation as read:', readErr)
     }
 
     // Quick-link buttons (WhatsApp only — IG/Messenger have no interactive

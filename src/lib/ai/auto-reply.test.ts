@@ -144,22 +144,22 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     )
   })
 
-  it('downgrades an open conversation to pending once the AI replies on its own', async () => {
+  it('downgrades an open conversation to pending and clears unread once the AI replies on its own', async () => {
     h.state.conv = { ...h.state.conv, status: 'open' }
     await dispatchInboundToAiReply(ARGS)
-    expect(h.state.updatePayload).toEqual({ status: 'pending' })
+    expect(h.state.updatePayload).toEqual({ status: 'pending', unread_count: 0 })
   })
 
-  it('leaves a pending conversation alone on a normal reply (no redundant write)', async () => {
+  it('clears unread but leaves an already-pending status alone (no redundant status write)', async () => {
     h.state.conv = { ...h.state.conv, status: 'pending' }
     await dispatchInboundToAiReply(ARGS)
-    expect(h.state.updatePayload).toBeNull()
+    expect(h.state.updatePayload).toEqual({ unread_count: 0 })
   })
 
-  it('never reopens or touches a conversation an agent already closed', async () => {
+  it('clears unread but never reopens a conversation an agent already closed', async () => {
     h.state.conv = { ...h.state.conv, status: 'closed' }
     await dispatchInboundToAiReply(ARGS)
-    expect(h.state.updatePayload).toBeNull()
+    expect(h.state.updatePayload).toEqual({ unread_count: 0 })
   })
 
   it('grounds the reply in retrieved knowledge', async () => {
