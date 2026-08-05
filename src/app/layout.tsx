@@ -6,6 +6,7 @@ import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
+import { getBranding } from "@/lib/branding";
 import {
   DEFAULT_MODE,
   DEFAULT_THEME,
@@ -20,25 +21,28 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "wacrm",
-    template: "%s — wacrm",
-  },
-  description: "Self-hostable CRM template for WhatsApp.",
-  robots: {
-    index: false,
-    follow: false,
-  },
-  icons: {
-    icon: [{ url: "/icon" }],
-  },
-  formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
-  },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { brandName } = await getBranding();
+  return {
+    title: {
+      default: brandName,
+      template: `%s — ${brandName}`,
+    },
+    description: "Self-hostable CRM template for WhatsApp.",
+    robots: {
+      index: false,
+      follow: false,
+    },
+    icons: {
+      icon: [{ url: "/icon" }],
+    },
+    formatDetection: {
+      email: false,
+      address: false,
+      telephone: false,
+    },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#020617",
