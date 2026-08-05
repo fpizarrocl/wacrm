@@ -8,6 +8,7 @@ import {
   Check,
   Loader2,
   Pencil,
+  Plus,
   ShieldAlert,
   Trash2,
   UserPlus,
@@ -24,6 +25,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface AdminAccount {
   id: string;
@@ -47,6 +55,7 @@ interface PlatformAdminRow {
  */
 export default function AdminPage() {
   const t = useTranslations("Admin");
+  const tAccount = useTranslations("AccountSwitcher");
   const { isPlatformAdmin, profileLoading, switchAccount } = useAuth();
 
   const [accounts, setAccounts] = useState<AdminAccount[] | null>(null);
@@ -57,6 +66,10 @@ export default function AdminPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [renaming, setRenaming] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [savingNewAccount, setSavingNewAccount] = useState(false);
 
   const loadAccounts = useCallback(async () => {
     const res = await fetch("/api/admin/accounts");
@@ -157,6 +170,55 @@ export default function AdminPage() {
     }
   };
 
+  const handleDeleteAccount = async (account: AdminAccount) => {
+    if (!window.confirm(t("deleteConfirm", { name: account.name }))) return;
+    setDeletingId(account.id);
+    try {
+      const res = await fetch(`/api/admin/accounts/${account.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? t("deleteFailed"));
+        return;
+      }
+      toast.success(t("deleteSuccess"));
+      setAccounts((prev) => prev?.filter((a) => a.id !== account.id) ?? prev);
+    } catch {
+      toast.error(t("deleteFailed"));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleCreateAccount = async () => {
+    const name = newAccountName.trim();
+    if (!name) {
+      toast.error(tAccount("nameRequired"));
+      return;
+    }
+    setSavingNewAccount(true);
+    try {
+      const res = await fetch("/api/account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? tAccount("createFailed"));
+        return;
+      }
+      setCreating(false);
+      setNewAccountName("");
+      await loadAccounts();
+    } catch {
+      toast.error(tAccount("createFailed"));
+    } finally {
+      setSavingNewAccount(false);
+    }
+  };
+
   const handleRevoke = async (userId: string) => {
     if (!window.confirm(t("revokeConfirm"))) return;
     const res = await fetch(`/api/admin/admins/${userId}`, { method: "DELETE" });
@@ -180,9 +242,14 @@ export default function AdminPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Building2 className="h-4 w-4 text-primary" /> {t("accountsTitle")}
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Building2 className="h-4 w-4 text-primary" /> {t("accountsTitle")}
+            </CardTitle>
+            <Button variant="outline" size="sm" onClick={() => setCreating(true)}>
+              <Plus className="h-3.5 w-3.5" /> {t("newAccount")}
+            </Button>
+          </div>
           <CardDescription>{t("accountsDescription")}</CardDescription>
           <Input
             value={search}
@@ -261,6 +328,19 @@ export default function AdminPage() {
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={deletingId === a.id}
+                          onClick={() => handleDeleteAccount(a)}
+                        >
+                          {deletingId === a.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
                         <Button variant="outline" size="sm" onClick={() => switchAccount(a.id)}>
                           {t("enter")}
                         </Button>
@@ -324,6 +404,37 @@ export default function AdminPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={creating}
+        onOpenChange={(o) => !savingNewAccount && setCreating(o)}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{tAccount("createCompanyTitle")}</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={newAccountName}
+            onChange={(e) => setNewAccountName(e.target.value)}
+            placeholder={tAccount("companyNamePlaceholder")}
+            disabled={savingNewAccount}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setCreating(false)}
+              disabled={savingNewAccount}
+            >
+              {tAccount("cancel")}
+            </Button>
+            <Button onClick={handleCreateAccount} disabled={savingNewAccount}>
+              {savingNewAccount && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {tAccount("create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

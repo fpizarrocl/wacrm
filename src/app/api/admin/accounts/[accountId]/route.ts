@@ -1,12 +1,17 @@
 // ============================================================
-// PATCH /api/admin/accounts/[accountId] — rename any account.
-// Platform admin only (migration 054).
+// /api/admin/accounts/[accountId] — platform admin only.
 //
-// No service-role client needed: `is_account_member()` treats a
-// platform admin as an 'admin'-role member of every account (see
-// migration 054), so `accounts_update` RLS already lets this UPDATE
-// through on the caller's own RLS-scoped client, same as the
-// self-service rename in /api/account.
+//   PATCH  — rename any account (migration 054). No service-role
+//            client needed: `is_account_member()` treats a platform
+//            admin as an 'admin'-role member of every account, so
+//            `accounts_update` RLS already lets this UPDATE through
+//            on the caller's own RLS-scoped client, same as the
+//            self-service rename in /api/account.
+//   DELETE — permanently delete any account (migration 055). Every
+//            account-scoped table cascades off `accounts.id`, so
+//            this tears down all of that account's data too — no
+//            confirmation short of the one already required in the
+//            UI before this request is sent.
 // ============================================================
 
 import { NextResponse } from "next/server";
@@ -85,6 +90,54 @@ export async function PATCH(
     }
 
     return NextResponse.json({ account: data });
+  } catch (err) {
+    return toErrorResponse(err);
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ accountId: string }> },
+) {
+  try {
+    const { supabase, userId } = await requirePlatformAdmin();
+    const { accountId } = await params;
+
+    if (!looksLikeUuid(accountId)) {
+      return NextResponse.json({ error: "Invalid account id" }, { status: 400 });
+    }
+
+    const limit = checkRateLimit(`admin:delete:${userId}`, RATE_LIMITS.adminAction);
+    if (!limit.success) return rateLimitResponse(limit);
+
+    // `.select("id")` isn't just the response payload — a plain
+    // `.delete()` returns success with zero rows affected when RLS
+    // filters the row out (unknown id, or the `accounts_delete`
+    // policy from migration 055 hasn't been applied yet) instead of
+    // erroring, so without it this would report "deleted" for a
+    // no-op.
+    const { data, error } = await supabase
+      .from("accounts")
+      .delete()
+      .eq("id", accountId)
+      .select("id");
+
+    if (error) {
+      console.error("[DELETE /api/admin/accounts/[accountId]] error:", error);
+      return NextResponse.json(
+        { error: "Failed to delete account" },
+        { status: 500 },
+      );
+    }
+
+    if (!data || data.length === 0) {
+      return NextResponse.json(
+        { error: "Account not found" },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({ ok: true });
   } catch (err) {
     return toErrorResponse(err);
   }
