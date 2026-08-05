@@ -184,8 +184,12 @@ export function buildSystemPrompt(args: {
   ]
 
   if (mode === 'auto_reply') {
+    const categoryCarveOut =
+      escalationCategories && escalationCategories.length > 0
+        ? ' Exception: if the reason matches one of the specific categories described further below, that process takes priority over this one — follow it instead, even though it also involves a handoff.'
+        : ''
     parts.push(
-      `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — write a short, natural reply that keeps the conversation feeling human (e.g. that you're looking into it and will follow up shortly). Never mention that you are an AI/bot, that you are transferring or escalating the chat, or that a different person will take over — the customer should feel like they're still talking to the same person. Then, on a new line by itself, output exactly ${HANDOFF_SENTINEL}. A human agent will silently take over from there. Prefer handing off over guessing.`,
+      `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — write a short, natural reply that keeps the conversation feeling human (e.g. that you're looking into it and will follow up shortly). Never mention that you are an AI/bot, that you are transferring or escalating the chat, or that a different person will take over — the customer should feel like they're still talking to the same person. Then, on a new line by itself, output exactly ${HANDOFF_SENTINEL}. A human agent will silently take over from there. Prefer handing off over guessing.${categoryCarveOut}`,
     )
   }
 
@@ -198,11 +202,15 @@ export function buildSystemPrompt(args: {
   }
 
   if (mode === 'auto_reply' && escalationCategories && escalationCategories.length > 0) {
+    const exampleKey = escalationCategories[0].key
     parts.push(
-      'Some reasons to hand off fall into specific categories, each with its own fixed closing message the system sends automatically: ' +
+      'IMPORTANT — read this before ever using the generic handoff above: some reasons to hand off, including the customer being upset or complaining, fall into one of these specific categories, each with its own fixed closing message the system sends automatically: ' +
         escalationCategories.map((c) => `key "${c.key}" = ${c.label}`).join('; ') +
-        '. Before escalating into one of these, gather enough concrete detail through normal conversation first — a bare mention of the topic alone (e.g. "I have a complaint", with no specifics of what happened) is NOT enough; ask a clarifying question or two so whoever picks this up already has context. ' +
-        `Only once you actually have that detail, output exactly ${handoffSentinel('<key>')} on its own line, using exactly one of the keys above — never invent one — and write NOTHING else in that reply: no closing text of your own, the system sends the right one for you. For any other reason to hand off, use the plain ${HANDOFF_SENTINEL} as described above, with your own natural closing text.`,
+        '. Whenever the reason matches one of these, this process overrides the generic one above. ' +
+        'STRICT RULE, no exceptions: the very first time the topic comes up in the conversation, you may NEVER output the category sentinel yet — you must instead reply normally, asking a short clarifying question about what happened, with no sentinel at all. ' +
+        `Only from the customer's NEXT message on the same topic — after you already asked and they replied with more detail — may you output exactly ${handoffSentinel('<key>')} on its own line, using exactly one of the keys above (never invent one), and write NOTHING else in that reply: no greeting, no closing text of your own — the system sends the fixed one for you. ` +
+        `Example — customer's first message is "I have a complaint" / "tengo un reclamo": you reply only "Lamento escuchar eso — ¿podrías contarme qué pasó?" (or the equivalent in the customer's language), with no sentinel. Only if they then give details do you reply with just ${handoffSentinel(exampleKey)} and nothing else. ` +
+        `For any other reason to hand off — one that isn't one of these categories — use the plain ${HANDOFF_SENTINEL} as described above, with your own natural closing text.`,
     )
   }
 

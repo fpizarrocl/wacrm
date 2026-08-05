@@ -141,15 +141,18 @@ export async function DELETE(_request: Request, { params }: Params) {
   try {
     const { supabase, accountId } = await requireRole('admin')
     const { id } = await params
-    const { error } = await supabase
+    const { data: deleted, error } = await supabase
       .from('ai_tools')
       .delete()
       .eq('account_id', accountId)
       .eq('id', id)
+      .select('id')
+      .maybeSingle()
     if (error) {
       console.error('[ai/tools/[id] DELETE] error:', error)
       return NextResponse.json({ error: 'Failed to delete tool' }, { status: 500 })
     }
+    if (!deleted) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json({ success: true })
   } catch (err) {
     return toErrorResponse(err)
