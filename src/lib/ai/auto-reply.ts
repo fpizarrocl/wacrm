@@ -4,7 +4,7 @@ import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
 import { buildSystemPrompt, isAutoReplyWindowExpired } from './defaults'
-import { buildHandoffSummary } from './handoff'
+import { buildHandoffData } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { loadAiTools } from './load-tools'
@@ -270,14 +270,17 @@ export async function dispatchInboundToAiReply(
         }
       }
 
-      const summary = buildHandoffSummary({
+      const handoffData = buildHandoffData({
         messages,
         replyCount: conv.ai_reply_count ?? 0,
         categoryLabel: category?.label,
       })
       const update: Record<string, unknown> = {
         ai_autoreply_disabled: true,
-        ai_handoff_summary: summary,
+        // JSON, not a pre-rendered sentence — the DB trigger that fans
+        // this out to `notifications` parses it into `data`, and the
+        // UI renders it in the viewer's own locale (handoff-display.ts).
+        ai_handoff_summary: JSON.stringify(handoffData),
         // A handoff always needs a human's eyes, even if the AI had
         // quietly downgraded this thread to 'pending' while it was
         // resolving things on its own — unconditional, unlike the

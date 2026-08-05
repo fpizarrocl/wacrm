@@ -1868,5 +1868,79 @@
       "addCategory": "Add category",
       "showKeys": "Show ids (advanced)"
     }
+  },
+  "Agents": {
+    "page": {
+      "title": "AI Agents",
+      "description": "Your bring-your-own-key AI agent — set it up, then test it in the playground before it replies to customers in the inbox.",
+      "tabPlayground": "Playground",
+      "tabSetup": "Setup",
+      "tabUsage": "Usage"
+    },
+    "playground": {
+      "title": "Playground",
+      "subtitle": "— test replies as if you were a customer",
+      "reset": "Reset",
+      "emptyTitle": "Send a message to see how your agent would reply.",
+      "emptyDescription": "It uses your knowledge base and behaves exactly like the auto-reply bot — including handoff. Attach a photo or a voice note to test how it handles those too.",
+      "goToSetup": "Not set up yet? Go to Setup",
+      "handoffNotice": "Would hand off to a human here",
+      "thinking": "Thinking…",
+      "attachTitle": "Attach a photo or an audio file",
+      "recordTitle": "Record a voice note",
+      "stopRecordingTitle": "Stop recording",
+      "recording": "Recording…",
+      "placeholder": "Type a customer message…",
+      "photoLabel": "📷 Photo",
+      "voiceNoteLabel": "🎤 Voice note",
+      "voiceNoteFileName": "Voice note",
+      "attachImageOrAudio": "Attach an image or an audio file (voice note).",
+      "fileTooLarge": "That file is too large — 5 MB max, same as WhatsApp.",
+      "couldNotReadFile": "Could not read that file.",
+      "couldNotReadRecording": "Could not read the recording.",
+      "micPermissionError": "Could not access the microphone — check your browser permissions.",
+      "notConfigured": "No agent configured yet — finish Setup first.",
+      "noTranscriptionKey": "Add an embeddings key in Setup to transcribe voice notes.",
+      "goToSetupAction": "Go to Setup",
+      "noReply": "Couldn't get a reply.",
+      "unreachable": "Couldn't reach the agent."
+    },
+    "usage": {
+      "title": "Token usage",
+      "description": "Tokens spent on your provider key by drafts and the auto-reply bot. Counts only — no message content is stored here.",
+      "lastNDays": "Last {days} days",
+      "loadFailed": "Failed to load usage",
+      "noUsage": "No AI usage in the last {days} days yet.",
+      "noUsageHint": "This fills in as the assistant drafts and auto-replies.",
+      "totalTokens": "Total tokens",
+      "llmCalls": "LLM calls",
+      "autoReply": "Auto-reply",
+      "drafts": "Drafts",
+      "tokensPerDay": "Tokens per day",
+      "byModel": "By model",
+      "callsCount": "{count, plural, =1 {# call} other {# calls}}",
+      "truncated": "Showing a partial window — usage is high enough that only the most recent records are summarized here."
+    }
+  },
+  "Notifications": {
+    "title": "Notifications",
+    "description": "Conversations other teammates assign to you show up here.",
+    "markAllRead": "Mark all as read",
+    "markReadFailed": "Failed to mark notification as read",
+    "markAllReadFailed": "Failed to mark all as read",
+    "retry": "Retry",
+    "emptyTitle": "No notifications yet",
+    "emptyDescription": "You'll see an alert here when someone assigns you a conversation.",
+    "unread": "Unread",
+    "assignedTitle": "New conversation assigned",
+    "assignedBody": "{actor} assigned you a conversation with {contact}",
+    "someone": "Someone",
+    "contactFallback": "a contact",
+    "handoffTitle": "AI handed off a conversation with {contact}"
+  },
+  "HandoffSummary": {
+    "categoryPrefix": "[{category}] ",
+    "repliesCount": "{count, plural, =0 {🤖 AI agent handed off without replying.} =1 {🤖 AI agent handed off after # reply.} other {🤖 AI agent handed off after # replies.}}",
+    "lastMessage": " Last customer message: “{quote}”"
   }
 }

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import { isAutoReplyWindowExpired } from "@/lib/ai/defaults";
+import { formatHandoffSummary, parseHandoffSummary } from "@/lib/ai/handoff-display";
 
 // ------------------------------------------------------------
 // Account AI status is the same for every conversation, so cache it per
@@ -97,6 +98,7 @@ export function AiThreadBanner({
   onChange,
 }: AiThreadBannerProps) {
   const t = useTranslations("Inbox.aiBanner");
+  const tHandoff = useTranslations("HandoffSummary");
   const { accountId } = useAuth();
   const [status, setStatus] = useState<AiAccountStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -167,15 +169,23 @@ export function AiThreadBanner({
   // Account has no auto-reply → nothing to show. (Still loading → nothing.)
   if (!autoReplyOn) return null;
 
-  // Paused here (a human took over, or the model handed off).
+  // Paused here (a human took over, or the model handed off). Parses
+  // as JSON for handoffs written after migration 053 (see
+  // handoff-display.ts); older rows hold a plain English sentence
+  // instead, shown as-is.
+  const parsedHandoff = handoffSummary ? parseHandoffSummary(handoffSummary) : null;
+  const displayedSummary = parsedHandoff
+    ? formatHandoffSummary(tHandoff, parsedHandoff)
+    : handoffSummary;
+
   if (paused) {
     return (
       <Banner tone="muted">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-foreground">{t("pausedTitle")}</p>
-          {handoffSummary && (
-            <p className="truncate text-muted-foreground" title={handoffSummary}>
-              {handoffSummary}
+          {displayedSummary && (
+            <p className="truncate text-muted-foreground" title={displayedSummary}>
+              {displayedSummary}
             </p>
           )}
         </div>

@@ -1868,5 +1868,79 @@
       "addCategory": "Agregar categoría",
       "showKeys": "Mostrar ids (avanzado)"
     }
+  },
+  "Agents": {
+    "page": {
+      "title": "Agentes de IA",
+      "description": "Tu agente de IA con tu propia clave — configuralo y después probalo en el playground antes de que responda a tus clientes en la bandeja de entrada.",
+      "tabPlayground": "Playground",
+      "tabSetup": "Configuración",
+      "tabUsage": "Uso"
+    },
+    "playground": {
+      "title": "Playground",
+      "subtitle": "— probá respuestas como si fueras un cliente",
+      "reset": "Reiniciar",
+      "emptyTitle": "Enviá un mensaje para ver cómo respondería tu agente.",
+      "emptyDescription": "Usa tu base de conocimientos y se comporta igual que el bot de respuesta automática — incluida la escalada a humano. Adjuntá una foto o una nota de voz para probar cómo las maneja también.",
+      "goToSetup": "¿Todavía no lo configuraste? Ir a Configuración",
+      "handoffNotice": "Acá escalaría a un humano",
+      "thinking": "Pensando…",
+      "attachTitle": "Adjuntar una foto o un archivo de audio",
+      "recordTitle": "Grabar una nota de voz",
+      "stopRecordingTitle": "Detener grabación",
+      "recording": "Grabando…",
+      "placeholder": "Escribí un mensaje del cliente…",
+      "photoLabel": "📷 Foto",
+      "voiceNoteLabel": "🎤 Nota de voz",
+      "voiceNoteFileName": "Nota de voz",
+      "attachImageOrAudio": "Adjuntá una imagen o un archivo de audio (nota de voz).",
+      "fileTooLarge": "Ese archivo es muy grande — 5 MB máximo, igual que WhatsApp.",
+      "couldNotReadFile": "No se pudo leer ese archivo.",
+      "couldNotReadRecording": "No se pudo leer la grabación.",
+      "micPermissionError": "No se pudo acceder al micrófono — revisá los permisos del navegador.",
+      "notConfigured": "Todavía no configuraste un agente — terminá la Configuración primero.",
+      "noTranscriptionKey": "Agregá una clave de embeddings en Configuración para transcribir notas de voz.",
+      "goToSetupAction": "Ir a Configuración",
+      "noReply": "No se pudo obtener una respuesta.",
+      "unreachable": "No se pudo contactar al agente."
+    },
+    "usage": {
+      "title": "Uso de tokens",
+      "description": "Tokens gastados en la clave de tu proveedor por los borradores y el bot de respuesta automática. Solo conteos — no se guarda el contenido de los mensajes acá.",
+      "lastNDays": "Últimos {days} días",
+      "loadFailed": "Error al cargar el uso",
+      "noUsage": "Todavía no hay uso de IA en los últimos {days} días.",
+      "noUsageHint": "Esto se va llenando a medida que el asistente redacta y responde automáticamente.",
+      "totalTokens": "Tokens totales",
+      "llmCalls": "Llamadas al modelo",
+      "autoReply": "Respuesta automática",
+      "drafts": "Borradores",
+      "tokensPerDay": "Tokens por día",
+      "byModel": "Por modelo",
+      "callsCount": "{count, plural, =1 {# llamada} other {# llamadas}}",
+      "truncated": "Mostrando una ventana parcial — el uso es lo bastante alto como para resumir acá solo los registros más recientes."
+    }
+  },
+  "Notifications": {
+    "title": "Notificaciones",
+    "description": "Acá aparecen las conversaciones que otros compañeros te asignan.",
+    "markAllRead": "Marcar todo como leído",
+    "markReadFailed": "Error al marcar la notificación como leída",
+    "markAllReadFailed": "Error al marcar todo como leído",
+    "retry": "Reintentar",
+    "emptyTitle": "Todavía no hay notificaciones",
+    "emptyDescription": "Vas a ver un aviso acá cuando alguien te asigne una conversación.",
+    "unread": "Sin leer",
+    "assignedTitle": "Nueva conversación asignada",
+    "assignedBody": "{actor} te asignó una conversación con {contact}",
+    "someone": "Alguien",
+    "contactFallback": "un contacto",
+    "handoffTitle": "La IA derivó una conversación con {contact}"
+  },
+  "HandoffSummary": {
+    "categoryPrefix": "[{category}] ",
+    "repliesCount": "{count, plural, =0 {🤖 La IA derivó la conversación sin responder.} =1 {🤖 La IA derivó la conversación después de # respuesta.} other {🤖 La IA derivó la conversación después de # respuestas.}}",
+    "lastMessage": " Último mensaje del cliente: “{quote}”"
   }
 }

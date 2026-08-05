@@ -304,9 +304,11 @@ describe('dispatchInboundToAiReply — handoff', () => {
     expect(h.engineSendText).not.toHaveBeenCalled()
     expect(h.state.rpcCalls).toHaveLength(0)
     expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
-    expect(h.state.updatePayload?.ai_handoff_summary).toContain(
-      'AI agent handed off',
-    )
+    // Stored as JSON — rendered in the viewer's locale by
+    // handoff-display.ts, not pre-formatted English here.
+    expect(JSON.parse(h.state.updatePayload?.ai_handoff_summary as string)).toMatchObject({
+      replyCount: 0,
+    })
     // No handoff target configured → conversation left unassigned.
     expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
   })
@@ -452,7 +454,9 @@ describe('dispatchInboundToAiReply — escalation categories', () => {
         tagId: 'tag-reclamos',
       }),
     )
-    expect(h.state.updatePayload?.ai_handoff_summary).toContain('[Reclamos]')
+    expect(JSON.parse(h.state.updatePayload?.ai_handoff_summary as string)).toMatchObject({
+      categoryLabel: 'Reclamos',
+    })
   })
 
   it('falls back to the generic handoff when the model invents an unknown category key', async () => {
@@ -469,7 +473,9 @@ describe('dispatchInboundToAiReply — escalation categories', () => {
       expect.objectContaining({ text: 'Dejame ver eso.' }),
     )
     expect(h.addContactTagAndDispatch).not.toHaveBeenCalled()
-    expect(h.state.updatePayload?.ai_handoff_summary).not.toContain('[')
+    expect(JSON.parse(h.state.updatePayload?.ai_handoff_summary as string)).not.toHaveProperty(
+      'categoryLabel',
+    )
   })
 
   it('still hands off (without a tag) when tagging fails', async () => {

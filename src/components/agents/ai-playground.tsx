@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Bot, RotateCcw, Send, Loader2, UserCircle2, ArrowRight, Paperclip, Mic, Square, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -50,6 +51,7 @@ function formatRecordingTime(seconds: number): string {
 }
 
 export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
+  const t = useTranslations('Agents.playground');
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
@@ -85,11 +87,11 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         ? 'audio'
         : null;
     if (!kind) {
-      toast.error('Attach an image or an audio file (voice note).');
+      toast.error(t('attachImageOrAudio'));
       return;
     }
     if (file.size > MAX_ATTACHMENT_BYTES) {
-      toast.error('That file is too large — 5 MB max, same as WhatsApp.');
+      toast.error(t('fileTooLarge'));
       return;
     }
 
@@ -104,7 +106,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         previewUrl: URL.createObjectURL(file),
       });
     } catch {
-      toast.error('Could not read that file.');
+      toast.error(t('couldNotReadFile'));
     }
   };
 
@@ -126,7 +128,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      toast.error('Could not access the microphone — check your browser permissions.');
+      toast.error(t('micPermissionError'));
       return;
     }
 
@@ -149,11 +151,11 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
           kind: 'audio',
           mimeType: recorder.mimeType || 'audio/webm',
           data,
-          name: 'Voice note',
+          name: t('voiceNoteFileName'),
           previewUrl: URL.createObjectURL(blob),
         });
       } catch {
-        toast.error('Could not read the recording.');
+        toast.error(t('couldNotReadRecording'));
       }
     };
 
@@ -184,7 +186,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
     const pendingAttachment = attachment;
     const userTurn: Turn = {
       role: 'user',
-      content: text || (pendingAttachment?.kind === 'image' ? '📷 Photo' : '🎤 Voice note'),
+      content: text || (pendingAttachment?.kind === 'image' ? t('photoLabel') : t('voiceNoteLabel')),
       attachment: pendingAttachment ?? undefined,
     };
     const next: Turn[] = [...turns, userTurn];
@@ -199,15 +201,15 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         // Send only role+content(+attachment on the turn that has one) —
         // the server ignores anything else.
         body: JSON.stringify({
-          messages: next.map((t) => ({
-            role: t.role,
-            content: t.content,
-            ...(t.attachment
+          messages: next.map((turn) => ({
+            role: turn.role,
+            content: turn.content,
+            ...(turn.attachment
               ? {
                   attachment: {
-                    kind: t.attachment.kind,
-                    mimeType: t.attachment.mimeType,
-                    data: t.attachment.data,
+                    kind: turn.attachment.kind,
+                    mimeType: turn.attachment.mimeType,
+                    data: turn.attachment.data,
                   },
                 }
               : {}),
@@ -217,13 +219,13 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.code === 'ai_not_configured') {
-          toast.error('No agent configured yet — finish Setup first.');
+          toast.error(t('notConfigured'));
         } else if (data.code === 'no_transcription_key') {
-          toast.error(data.error ?? 'Add an embeddings key in Setup to transcribe voice notes.', {
-            action: onGoToSetup ? { label: 'Go to Setup', onClick: onGoToSetup } : undefined,
+          toast.error(data.error ?? t('noTranscriptionKey'), {
+            action: onGoToSetup ? { label: t('goToSetupAction'), onClick: onGoToSetup } : undefined,
           });
         } else {
-          toast.error(data.error ?? "Couldn't get a reply.");
+          toast.error(data.error ?? t('noReply'));
         }
         // Roll the unsent user turn back so the transcript stays clean.
         setTurns(turns);
@@ -243,7 +245,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         },
       ]);
     } catch {
-      toast.error("Couldn't reach the agent.");
+      toast.error(t('unreachable'));
       setTurns(turns);
       setInput(text);
       setAttachment(pendingAttachment);
@@ -265,10 +267,8 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium text-foreground">Playground</span>
-          <span className="text-xs text-muted-foreground">
-            — test replies as if you were a customer
-          </span>
+          <span className="text-sm font-medium text-foreground">{t('title')}</span>
+          <span className="text-xs text-muted-foreground">{t('subtitle')}</span>
         </div>
         <Button
           variant="ghost"
@@ -280,7 +280,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
           disabled={turns.length === 0 || sending}
           className="text-muted-foreground"
         >
-          <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Reset
+          <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> {t('reset')}
         </Button>
       </div>
 
@@ -289,12 +289,8 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         {turns.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center text-center text-sm text-muted-foreground">
             <Bot className="mb-2 h-8 w-8 text-muted-foreground/60" />
-            <p>Send a message to see how your agent would reply.</p>
-            <p className="mt-1 text-xs">
-              It uses your knowledge base and behaves exactly like the
-              auto-reply bot — including handoff. Attach a photo or a
-              voice note to test how it handles those too.
-            </p>
+            <p>{t('emptyTitle')}</p>
+            <p className="mt-1 text-xs">{t('emptyDescription')}</p>
             {onGoToSetup && (
               <Button
                 variant="link"
@@ -302,56 +298,56 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
                 onClick={onGoToSetup}
                 className="mt-1 h-auto p-0 text-xs"
               >
-                Not set up yet? Go to Setup <ArrowRight className="ml-1 h-3 w-3" />
+                {t('goToSetup')} <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             )}
           </div>
         )}
 
-        {turns.map((t, i) => (
+        {turns.map((turn, i) => (
           <div
             key={i}
             className={cn(
               'flex gap-2',
-              t.role === 'user' ? 'justify-end' : 'justify-start',
+              turn.role === 'user' ? 'justify-end' : 'justify-start',
             )}
           >
-            {t.role === 'assistant' && (
+            {turn.role === 'assistant' && (
               <Bot className="mt-1 h-5 w-5 shrink-0 text-primary" />
             )}
             <div
               className={cn(
                 'max-w-[80%] rounded-2xl px-3.5 py-2 text-sm',
-                t.role === 'user'
+                turn.role === 'user'
                   ? 'rounded-br-sm bg-primary text-primary-foreground'
                   : 'rounded-bl-sm bg-muted text-foreground',
               )}
             >
-              {t.attachment?.kind === 'image' && (
+              {turn.attachment?.kind === 'image' && (
                 // eslint-disable-next-line @next/next/no-img-element -- local object URL preview, not a remote asset
                 <img
-                  src={t.attachment.previewUrl}
-                  alt={t.attachment.name}
+                  src={turn.attachment.previewUrl}
+                  alt={turn.attachment.name}
                   className="mb-1.5 max-h-48 rounded-lg object-cover"
                 />
               )}
-              {t.attachment?.kind === 'audio' && (
-                <audio controls src={t.attachment.previewUrl} className="mb-1.5 h-8 max-w-56" />
+              {turn.attachment?.kind === 'audio' && (
+                <audio controls src={turn.attachment.previewUrl} className="mb-1.5 h-8 max-w-56" />
               )}
-              {t.content && <p className="whitespace-pre-wrap">{t.content}</p>}
-              {t.role === 'assistant' && t.handoff && (
+              {turn.content && <p className="whitespace-pre-wrap">{turn.content}</p>}
+              {turn.role === 'assistant' && turn.handoff && (
                 <p
                   className={cn(
                     'flex items-center gap-1 text-xs text-amber-500',
-                    t.content && 'mt-1.5 border-t border-border/50 pt-1.5',
+                    turn.content && 'mt-1.5 border-t border-border/50 pt-1.5',
                   )}
                 >
                   <UserCircle2 className="h-3.5 w-3.5" />
-                  Would hand off to a human here
+                  {t('handoffNotice')}
                 </p>
               )}
             </div>
-            {t.role === 'user' && (
+            {turn.role === 'user' && (
               <UserCircle2 className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
             )}
           </div>
@@ -360,7 +356,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         {sending && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Bot className="h-5 w-5 text-primary" />
-            <Loader2 className="h-4 w-4 animate-spin" /> Thinking…
+            <Loader2 className="h-4 w-4 animate-spin" /> {t('thinking')}
           </div>
         )}
       </div>
@@ -404,7 +400,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
           onClick={() => fileInputRef.current?.click()}
           disabled={sending || recording}
           className="h-9 w-9 shrink-0 p-0"
-          title="Attach a photo or an audio file"
+          title={t('attachTitle')}
         >
           <Paperclip className="h-4 w-4" />
         </Button>
@@ -415,21 +411,21 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
           onClick={() => (recording ? stopRecording() : void startRecording())}
           disabled={sending}
           className="h-9 w-9 shrink-0 p-0"
-          title={recording ? 'Stop recording' : 'Record a voice note'}
+          title={recording ? t('stopRecordingTitle') : t('recordTitle')}
         >
           {recording ? <Square className="h-3.5 w-3.5 fill-current" /> : <Mic className="h-4 w-4" />}
         </Button>
         {recording ? (
           <div className="flex flex-1 items-center gap-2 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
             <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-destructive" />
-            Recording… {formatRecordingTime(recordingSeconds)}
+            {t('recording')} {formatRecordingTime(recordingSeconds)}
           </div>
         ) : (
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a customer message…"
+            placeholder={t('placeholder')}
             rows={1}
             className="flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none focus:border-primary/50"
           />

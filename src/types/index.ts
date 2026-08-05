@@ -190,8 +190,12 @@ export interface Conversation {
    *  - `ai_reply_window_started_at` — when the current reply-count cycle
    *    began (migration 050); the count resets on its own this many
    *    hours later (`ai_configs.auto_reply_reset_hours`).
-   *  - `ai_handoff_summary` — short internal note the bot wrote when it
-   *    handed off, shown to whoever takes the thread over.
+   *  - `ai_handoff_summary` — JSON-encoded `HandoffSummaryData` (see
+   *    src/lib/ai/handoff.ts) the bot wrote when it handed off. Parse
+   *    with `parseHandoffSummary` / render with `formatHandoffSummary`
+   *    (src/lib/ai/handoff-display.ts) rather than showing it raw —
+   *    pre-migration-053 rows instead hold a plain English sentence,
+   *    which those helpers fall back to showing as-is.
    */
   ai_autoreply_disabled?: boolean;
   ai_reply_count?: number;
@@ -215,8 +219,17 @@ export interface Notification {
   contact_id?: string;
   /** Who triggered it. Null when an automation/system assigned it. */
   actor_user_id?: string;
+  /** Pre-rendered English fallback — only actually shown when `data` is
+   *  null (rows written before migration 053). Prefer `data` + i18n. */
   title: string;
   body?: string;
+  /** Structured payload the trigger builds (migration 053) so the UI
+   *  can render title/body in the viewer's locale instead of the fixed
+   *  English text in `title`/`body`. Shape depends on `type`:
+   *  `conversation_assigned` → `{ actorName, contactName }`;
+   *  `ai_handoff` → `HandoffSummaryData & { contactName }` (see
+   *  `src/lib/ai/handoff.ts`). Null for rows predating this column. */
+  data?: Record<string, unknown> | null;
   read_at?: string;
   created_at: string;
 }

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { buildHandoffSummary } from './handoff'
+import { buildHandoffData } from './handoff'
 
-describe('buildHandoffSummary', () => {
-  it('notes the reply count and quotes the last customer message', () => {
-    const summary = buildHandoffSummary({
+describe('buildHandoffData', () => {
+  it('captures the reply count and the last customer message', () => {
+    const data = buildHandoffData({
       messages: [
         { role: 'user', content: 'Hi' },
         { role: 'assistant', content: 'Hello! How can I help?' },
@@ -11,30 +11,20 @@ describe('buildHandoffSummary', () => {
       ],
       replyCount: 2,
     })
-    expect(summary).toBe(
-      '🤖 AI agent handed off after 2 replies. Last customer message: “I want a refund”',
-    )
+    expect(data).toEqual({ replyCount: 2, lastCustomerMessage: 'I want a refund' })
   })
 
-  it('uses the singular "reply" for a count of one', () => {
-    const summary = buildHandoffSummary({
-      messages: [{ role: 'user', content: 'help' }],
-      replyCount: 1,
-    })
-    expect(summary).toContain('after 1 reply.')
-  })
-
-  it('says "without replying" when the bot bailed on the first inbound', () => {
-    const summary = buildHandoffSummary({
+  it('carries replyCount 0 when the bot bailed on the first inbound', () => {
+    const data = buildHandoffData({
       messages: [{ role: 'user', content: 'agent please' }],
       replyCount: 0,
     })
-    expect(summary).toContain('handed off without replying.')
-    expect(summary).toContain('“agent please”')
+    expect(data.replyCount).toBe(0)
+    expect(data.lastCustomerMessage).toBe('agent please')
   })
 
   it('picks the most recent customer turn, ignoring assistant turns', () => {
-    const summary = buildHandoffSummary({
+    const data = buildHandoffData({
       messages: [
         { role: 'user', content: 'first' },
         { role: 'user', content: 'second' },
@@ -42,36 +32,39 @@ describe('buildHandoffSummary', () => {
       ],
       replyCount: 1,
     })
-    expect(summary).toContain('“second”')
+    expect(data.lastCustomerMessage).toBe('second')
   })
 
   it('collapses whitespace and truncates a long message', () => {
     const long = 'x'.repeat(300)
-    const summary = buildHandoffSummary({
+    const data = buildHandoffData({
       messages: [{ role: 'user', content: long }],
       replyCount: 0,
     })
-    expect(summary).toContain('…')
-    // 160-char cap on the quote; the whole note stays well under 250.
-    expect(summary.length).toBeLessThan(250)
+    expect(data.lastCustomerMessage).toContain('…')
+    expect(data.lastCustomerMessage!.length).toBeLessThan(200)
   })
 
-  it('degrades gracefully when there is no customer message', () => {
-    const summary = buildHandoffSummary({
+  it('sets lastCustomerMessage to null when there is no customer message', () => {
+    const data = buildHandoffData({
       messages: [{ role: 'assistant', content: 'greeting' }],
       replyCount: 0,
     })
-    expect(summary).toBe('🤖 AI agent handed off without replying.')
+    expect(data).toEqual({ replyCount: 0, lastCustomerMessage: null })
   })
 
-  it('prepends the category label when the handoff matched one', () => {
-    const summary = buildHandoffSummary({
+  it('includes categoryLabel only when the handoff matched a category', () => {
+    const withCategory = buildHandoffData({
       messages: [{ role: 'user', content: 'quiero hacer un reclamo' }],
       replyCount: 1,
       categoryLabel: 'Reclamos',
     })
-    expect(summary).toBe(
-      '[Reclamos] 🤖 AI agent handed off after 1 reply. Last customer message: “quiero hacer un reclamo”',
-    )
+    expect(withCategory.categoryLabel).toBe('Reclamos')
+
+    const without = buildHandoffData({
+      messages: [{ role: 'user', content: 'hola' }],
+      replyCount: 1,
+    })
+    expect(without).not.toHaveProperty('categoryLabel')
   })
 })

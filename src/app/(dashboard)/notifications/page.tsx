@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Notification } from "@/types";
@@ -10,6 +11,8 @@ import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { formatHandoffSummary } from "@/lib/ai/handoff-display";
+import type { HandoffSummaryData } from "@/lib/ai/handoff";
 
 // Icon per notification type.
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
@@ -17,7 +20,42 @@ const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   ai_handoff: Bot,
 };
 
+/**
+ * Title/body shown for a notification. `n.data` (migration 053) lets
+ * this render in the viewer's own locale; rows written before that
+ * migration have no `data` and fall back to the fixed English text the
+ * DB trigger stored directly in `title`/`body`.
+ */
+function useNotificationText() {
+  const t = useTranslations("Notifications");
+  const tHandoff = useTranslations("HandoffSummary");
+
+  return (n: Notification): { title: string; body: string | undefined } => {
+    if (!n.data) return { title: n.title, body: n.body };
+
+    if (n.type === "conversation_assigned") {
+      const data = n.data as { actorName?: string | null; contactName?: string | null };
+      return {
+        title: t("assignedTitle"),
+        body: t("assignedBody", {
+          actor: data.actorName || t("someone"),
+          contact: data.contactName || t("contactFallback"),
+        }),
+      };
+    }
+
+    // ai_handoff
+    const data = n.data as unknown as HandoffSummaryData & { contactName?: string | null };
+    return {
+      title: t("handoffTitle", { contact: data.contactName || t("contactFallback") }),
+      body: formatHandoffSummary(tHandoff, data),
+    };
+  };
+}
+
 export default function NotificationsPage() {
+  const t = useTranslations("Notifications");
+  const getNotificationText = useNotificationText();
   const router = useRouter();
   const { accountId } = useAuth();
   const [notifications, setNotifications] = useState<Notification[] | null>(
@@ -104,11 +142,11 @@ export default function NotificationsPage() {
         .eq("id", id)
         .is("read_at", null);
       if (updateErr) {
-        toast.error("Failed to mark notification as read");
+        toast.error(t("markReadFailed"));
         load();
       }
     },
-    [load],
+    [load, t],
   );
 
   const handleClick = useCallback(
@@ -137,17 +175,17 @@ export default function NotificationsPage() {
       .is("read_at", null);
     setMarkingAll(false);
     if (updateErr) {
-      toast.error("Failed to mark all as read");
+      toast.error(t("markAllReadFailed"));
       load();
     }
-  }, [unreadIds.length, load]);
+  }, [unreadIds.length, load, t]);
 
   if (error) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
         <p className="text-sm text-destructive">{error}</p>
         <Button variant="outline" onClick={() => window.location.reload()}>
-          Retry
+          {t("retry")}
         </Button>
       </div>
     );
@@ -165,9 +203,9 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Conversations other teammates assign to you show up here.
+            {t("description")}
           </p>
         </div>
         <Button
@@ -181,7 +219,7 @@ export default function NotificationsPage() {
           ) : (
             <CheckCheck className="h-4 w-4" />
           )}
-          Mark all as read
+          {t("markAllRead")}
         </Button>
       </div>
 
@@ -191,11 +229,10 @@ export default function NotificationsPage() {
             <Bell className="h-6 w-6 text-primary" />
           </div>
           <p className="mt-3 text-sm font-medium text-foreground">
-            No notifications yet
+            {t("emptyTitle")}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            You&apos;ll see an alert here when someone assigns you a
-            conversation.
+            {t("emptyDescription")}
           </p>
         </div>
       ) : (
@@ -203,6 +240,7 @@ export default function NotificationsPage() {
           {notifications.map((n) => {
             const Icon = TYPE_ICON[n.type] ?? Bell;
             const isUnread = !n.read_at;
+            const { title, body } = getNotificationText(n);
             return (
               <li key={n.id}>
                 <button
@@ -237,18 +275,18 @@ export default function NotificationsPage() {
                           isUnread ? "text-foreground" : "text-muted-foreground",
                         )}
                       >
-                        {n.title}
+                        {title}
                       </span>
                       {isUnread && (
                         <span
-                          aria-label="Unread"
+                          aria-label={t("unread")}
                           className="h-2 w-2 flex-shrink-0 rounded-full bg-primary"
                         />
                       )}
                     </div>
-                    {n.body && (
+                    {body && (
                       <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {n.body}
+                        {body}
                       </p>
                     )}
                     <p className="mt-1 text-[11px] text-muted-foreground/70">
