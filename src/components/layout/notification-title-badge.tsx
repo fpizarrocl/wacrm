@@ -22,19 +22,20 @@ const BADGE_PREFIX = /^\(\d+\)\s/;
  * Re-applies on every route change too, not just on count change: Next
  * resets `document.title` to the page's clean SSR title on navigation,
  * which would otherwise silently drop the badge on a page that didn't
- * itself change the unread count. Deferred a tick so it reasserts
- * itself after Next's own title update on the same navigation, rather
- * than racing it.
+ * itself change the unread count.
+ *
+ * Sets `document.title` synchronously in the effect — no
+ * requestAnimationFrame defer. rAF callbacks are throttled to near-zero
+ * in background tabs, so a notification arriving while this tab isn't
+ * focused would sit un-applied until something else (a manual reload)
+ * happened to repaint — exactly the case this badge exists for.
  */
 export function NotificationTitleBadge({ unread }: { unread: number }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      const base = document.title.replace(BADGE_PREFIX, "");
-      document.title = unread > 0 ? `(${unread}) ${base}` : base;
-    });
-    return () => cancelAnimationFrame(id);
+    const base = document.title.replace(BADGE_PREFIX, "");
+    document.title = unread > 0 ? `(${unread}) ${base}` : base;
   }, [unread, pathname]);
 
   return null;
