@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Building2, Loader2, ShieldAlert, Trash2, UserPlus } from "lucide-react";
+import {
+  Building2,
+  Check,
+  Loader2,
+  Pencil,
+  ShieldAlert,
+  Trash2,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -45,6 +54,9 @@ export default function AdminPage() {
   const [admins, setAdmins] = useState<PlatformAdminRow[] | null>(null);
   const [newEmail, setNewEmail] = useState("");
   const [granting, setGranting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   const loadAccounts = useCallback(async () => {
     const res = await fetch("/api/admin/accounts");
@@ -106,6 +118,45 @@ export default function AdminPage() {
     }
   };
 
+  const startEditing = (account: AdminAccount) => {
+    setEditingId(account.id);
+    setEditingName(account.name);
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditingName("");
+  };
+
+  const handleRename = async (accountId: string) => {
+    const name = editingName.trim();
+    if (!name) return;
+    setRenaming(true);
+    try {
+      const res = await fetch(`/api/admin/accounts/${accountId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? t("renameFailed"));
+        return;
+      }
+      toast.success(t("renameSuccess"));
+      setAccounts((prev) =>
+        prev
+          ? prev.map((a) => (a.id === accountId ? { ...a, name } : a))
+          : prev,
+      );
+      cancelEditing();
+    } catch {
+      toast.error(t("renameFailed"));
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const handleRevoke = async (userId: string) => {
     if (!window.confirm(t("revokeConfirm"))) return;
     const res = await fetch(`/api/admin/admins/${userId}`, { method: "DELETE" });
@@ -154,19 +205,68 @@ export default function AdminPage() {
                   key={a.id}
                   className="flex items-center justify-between gap-2 px-3 py-2"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm text-foreground">{a.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {t("createdAt", {
-                        date: formatDistanceToNow(new Date(a.created_at), {
-                          addSuffix: true,
-                        }),
-                      })}
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => switchAccount(a.id)}>
-                    {t("enter")}
-                  </Button>
+                  {editingId === a.id ? (
+                    <>
+                      <Input
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void handleRename(a.id);
+                          if (e.key === "Escape") cancelEditing();
+                        }}
+                        disabled={renaming}
+                        autoFocus
+                        className="h-8"
+                      />
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={renaming || !editingName.trim()}
+                          onClick={() => handleRename(a.id)}
+                        >
+                          {renaming ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={renaming}
+                          onClick={cancelEditing}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-foreground">{a.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {t("createdAt", {
+                            date: formatDistanceToNow(new Date(a.created_at), {
+                              addSuffix: true,
+                            }),
+                          })}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => startEditing(a)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => switchAccount(a.id)}>
+                          {t("enter")}
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

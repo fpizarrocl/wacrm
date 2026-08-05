@@ -1964,6 +1964,8 @@
     "createdAt": "Creada {date}",
     "enter": "Entrar",
     "loadAccountsFailed": "Error al cargar las empresas.",
+  "renameSuccess": "Nombre de la empresa actualizado.",
+  "renameFailed": "No se pudo actualizar el nombre.",
     "adminsTitle": "Súper admins",
     "adminsDescription": "Cualquiera listado acá tiene el mismo acceso root que vos — puede navegar y entrar a todas las empresas de esta instancia.",
     "emailPlaceholder": "Correo electrónico",

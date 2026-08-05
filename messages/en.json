@@ -1964,6 +1964,8 @@
     "createdAt": "Created {date}",
     "enter": "Enter",
     "loadAccountsFailed": "Failed to load companies.",
+  "renameSuccess": "Company name updated.",
+  "renameFailed": "Couldn't update the name.",
     "adminsTitle": "Platform admins",
     "adminsDescription": "Anyone listed here has the same root access you do — able to browse and enter every company in this instance.",
     "emailPlaceholder": "Email address",
