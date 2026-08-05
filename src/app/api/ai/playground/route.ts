@@ -194,18 +194,31 @@ export async function POST(request: Request) {
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
+      escalationCategories: config.escalationCategories,
     })
 
     const { definitions: tools, executeTool } = await loadAiTools(supabase, accountId)
 
-    const { text, handoff } = await generateReply({
+    const { text, handoff, handoffCategory } = await generateReply({
       config,
       systemPrompt,
       messages,
       tools,
       executeTool,
     })
-    return NextResponse.json({ reply: text, handoff })
+
+    // Mirror what a real customer would actually receive: a categorized
+    // handoff never sends the model's own text (auto-reply.ts sends the
+    // category's fixed closingPhrase instead, so the admin-written
+    // phrase can never drift into something the model paraphrased).
+    // Preview-only — unlike auto-reply.ts, this never applies the
+    // category's tag; the Playground never sends or stores anything.
+    const category = handoffCategory
+      ? config.escalationCategories.find((c) => c.key === handoffCategory)
+      : undefined
+    const reply = category ? category.closingPhrase : text
+
+    return NextResponse.json({ reply, handoff })
   } catch (err) {
     if (err instanceof AiError) {
       return NextResponse.json(

@@ -201,7 +201,8 @@ export function buildSystemPrompt(args: {
     parts.push(
       'Some reasons to hand off fall into specific categories, each with its own fixed closing message the system sends automatically: ' +
         escalationCategories.map((c) => `key "${c.key}" = ${c.label}`).join('; ') +
-        `. When the customer's request clearly matches one of these, output exactly ${handoffSentinel('<key>')} on its own line, using exactly one of the keys above — never invent one — and write NOTHING else: no closing text of your own, the system sends the right one for you. For any other reason to hand off, use the plain ${HANDOFF_SENTINEL} as described above, with your own natural closing text.`,
+        '. Before escalating into one of these, gather enough concrete detail through normal conversation first — a bare mention of the topic alone (e.g. "I have a complaint", with no specifics of what happened) is NOT enough; ask a clarifying question or two so whoever picks this up already has context. ' +
+        `Only once you actually have that detail, output exactly ${handoffSentinel('<key>')} on its own line, using exactly one of the keys above — never invent one — and write NOTHING else in that reply: no closing text of your own, the system sends the right one for you. For any other reason to hand off, use the plain ${HANDOFF_SENTINEL} as described above, with your own natural closing text.`,
     )
   }
 
