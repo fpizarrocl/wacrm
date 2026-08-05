@@ -110,6 +110,7 @@ beforeEach(() => {
     assigned_agent_id: null,
     ai_autoreply_disabled: false,
     ai_reply_count: 0,
+    status: 'open',
   }
   h.state.autoResponders = []
   h.state.claim = true
@@ -141,6 +142,24 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.engineSendText).toHaveBeenCalledWith(
       expect.objectContaining({ conversationId: 'conv-1', text: 'Hello!' }),
     )
+  })
+
+  it('downgrades an open conversation to pending once the AI replies on its own', async () => {
+    h.state.conv = { ...h.state.conv, status: 'open' }
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.state.updatePayload).toEqual({ status: 'pending' })
+  })
+
+  it('leaves a pending conversation alone on a normal reply (no redundant write)', async () => {
+    h.state.conv = { ...h.state.conv, status: 'pending' }
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.state.updatePayload).toBeNull()
+  })
+
+  it('never reopens or touches a conversation an agent already closed', async () => {
+    h.state.conv = { ...h.state.conv, status: 'closed' }
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.state.updatePayload).toBeNull()
   })
 
   it('grounds the reply in retrieved knowledge', async () => {
@@ -209,6 +228,28 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
+  it('reopens a capped conversation the AI had downgraded to pending', async () => {
+    h.state.conv = {
+      assigned_agent_id: null,
+      ai_autoreply_disabled: false,
+      ai_reply_count: 3,
+      status: 'pending',
+    }
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.state.updatePayload).toEqual({ status: 'open' })
+  })
+
+  it('does not redundantly write when a capped conversation is already open', async () => {
+    h.state.conv = {
+      assigned_agent_id: null,
+      ai_autoreply_disabled: false,
+      ai_reply_count: 3,
+      status: 'open',
+    }
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.state.updatePayload).toBeNull()
+  })
+
   it('passes reset_after_hours to the atomic claim (null when auto-reset is off)', async () => {
     await dispatchInboundToAiReply(ARGS)
     expect(h.state.rpcCalls[0]).toMatchObject({
@@ -268,6 +309,13 @@ describe('dispatchInboundToAiReply — handoff', () => {
     )
     // No handoff target configured → conversation left unassigned.
     expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
+  })
+
+  it('reopens the conversation on handoff, even if the AI had downgraded it to pending', async () => {
+    h.state.conv = { ...h.state.conv, status: 'pending' }
+    h.generateReply.mockResolvedValue({ text: '', handoff: true })
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.state.updatePayload).toMatchObject({ status: 'open' })
   })
 
   it('routes to the configured handoff agent on handoff', async () => {

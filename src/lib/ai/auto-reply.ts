@@ -81,7 +81,7 @@ export async function dispatchInboundToAiReply(
     const { data: conv, error: convErr } = await db
       .from('conversations')
       .select(
-        'assigned_agent_id, ai_autoreply_disabled, ai_reply_count, ai_reply_window_started_at, channel',
+        'assigned_agent_id, ai_autoreply_disabled, ai_reply_count, ai_reply_window_started_at, channel, status',
       )
       .eq('id', conversationId)
       .maybeSingle()
@@ -97,6 +97,19 @@ export async function dispatchInboundToAiReply(
       conv.ai_reply_count >= config.autoReplyMaxPerConversation &&
       !isAutoReplyWindowExpired(conv.ai_reply_window_started_at, config.autoReplyResetHours)
     ) {
+      // The AI can no longer resolve this on its own — same as a real
+      // handoff, a human needs to see it. Unconditional (unlike the
+      // pending-downgrade below): the cap is a hard stop, so it reopens
+      // even a conversation an agent had closed.
+      if (conv.status !== 'open') {
+        const { error: statusErr } = await db
+          .from('conversations')
+          .update({ status: 'open' })
+          .eq('id', conversationId)
+        if (statusErr) {
+          console.warn('[ai auto-reply] failed to reopen a capped conversation:', statusErr)
+        }
+      }
       return
     }
 
@@ -265,6 +278,11 @@ export async function dispatchInboundToAiReply(
       const update: Record<string, unknown> = {
         ai_autoreply_disabled: true,
         ai_handoff_summary: summary,
+        // A handoff always needs a human's eyes, even if the AI had
+        // quietly downgraded this thread to 'pending' while it was
+        // resolving things on its own — unconditional, unlike the
+        // downgrade below, which never touches an agent's own 'closed'.
+        status: 'open',
       }
       // Only set the assignee when a target is configured AND the thread
       // isn't already owned — never stomp an existing human assignment.
@@ -300,6 +318,21 @@ export async function dispatchInboundToAiReply(
     if (claimed !== true) return // lost the per-conversation cap race
 
     await sendReply(text)
+
+    // The AI is handling this thread on its own — don't leave it
+    // looking "Abierta" (needing a human) in the inbox. Only downgrades
+    // from 'open': never touches 'pending' (already there) or 'closed'
+    // (an agent's own call, not ours to override). Best-effort — a
+    // failure here must never roll back the reply that already sent.
+    if (conv.status === 'open') {
+      const { error: statusErr } = await db
+        .from('conversations')
+        .update({ status: 'pending' })
+        .eq('id', conversationId)
+      if (statusErr) {
+        console.warn('[ai auto-reply] failed to downgrade status to pending:', statusErr)
+      }
+    }
 
     // Quick-link buttons (WhatsApp only — IG/Messenger have no interactive
     // send path yet). Sent as separate follow-up messages, one per link,
