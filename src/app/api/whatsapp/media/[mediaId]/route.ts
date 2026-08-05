@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 
@@ -7,6 +7,17 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ mediaId: string }> }
 ) {
+  // Resolves the caller's *active* account (migration 054) — media for
+  // a conversation must come from whichever company's WhatsApp config
+  // they're currently switched into, not just their home account.
+  let ctx
+  try {
+    ctx = await requireRole('viewer')
+  } catch (err) {
+    return toErrorResponse(err)
+  }
+  const { supabase, accountId } = ctx
+
   try {
     const { mediaId } = await params
 
@@ -14,37 +25,6 @@ export async function GET(
       return NextResponse.json(
         { error: 'Media ID is required' },
         { status: 400 }
-      )
-    }
-
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Resolve the caller's account_id — whatsapp_config is one-per-
-    // account post-multi-user, so a teammate fetching media for a
-    // conversation in the shared inbox needs the account's config,
-    // not their personal (non-existent) row.
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_id')
-      .eq('user_id', user.id)
-      .maybeSingle()
-    const accountId = profile?.account_id as string | undefined
-    if (!accountId) {
-      return NextResponse.json(
-        { error: 'Your profile is not linked to an account.' },
-        { status: 403 },
       )
     }
 

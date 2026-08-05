@@ -31,6 +31,7 @@
     "flows": "Flows",
     "aiAgents": "AI Agents",
     "settings": "Configuración",
+    "admin": "Administración",
     "beta": "Beta",
     "unreadConversations": "{count} {count, plural, =1 {conversación} other {conversaciones}} sin leer",
     "unreadNotifications": "{count} {count, plural, =1 {notificación} other {notificaciones}} sin leer",
@@ -1942,5 +1943,37 @@
     "categoryPrefix": "[{category}] ",
     "repliesCount": "{count, plural, =0 {🤖 La IA derivó la conversación sin responder.} =1 {🤖 La IA derivó la conversación después de # respuesta.} other {🤖 La IA derivó la conversación después de # respuestas.}}",
     "lastMessage": " Último mensaje del cliente: “{quote}”"
+  },
+  "AccountSwitcher": {
+    "createCompany": "Crear una empresa",
+    "createCompanyTitle": "Crear una nueva empresa",
+    "companyNamePlaceholder": "Nombre de la empresa",
+    "nameRequired": "Ponele un nombre a la empresa.",
+    "createFailed": "No se pudo crear la empresa.",
+    "cancel": "Cancelar",
+    "create": "Crear"
+  },
+  "Admin": {
+    "title": "Administración",
+    "description": "Herramientas de toda la plataforma — visibles solo para súper admins. Navegá todas las empresas de esta instancia, u otorgá/revocá ese mismo acceso a otra persona.",
+    "accountsTitle": "Empresas",
+    "accountsDescription": "Todas las empresas de esta instancia.",
+    "searchPlaceholder": "Buscar empresas…",
+    "loading": "Cargando…",
+    "noAccounts": "Ninguna empresa coincide con tu búsqueda.",
+    "createdAt": "Creada {date}",
+    "enter": "Entrar",
+    "loadAccountsFailed": "Error al cargar las empresas.",
+    "adminsTitle": "Súper admins",
+    "adminsDescription": "Cualquiera listado acá tiene el mismo acceso root que vos — puede navegar y entrar a todas las empresas de esta instancia.",
+    "emailPlaceholder": "Correo electrónico",
+    "grant": "Otorgar acceso",
+    "grantSuccess": "Acceso de súper admin otorgado.",
+    "grantFailed": "No se pudo otorgar el acceso.",
+    "revokeConfirm": "¿Revocar el acceso de súper admin de esta persona?",
+    "revokeSuccess": "Acceso de súper admin revocado.",
+    "revokeFailed": "No se pudo revocar el acceso.",
+    "loadAdminsFailed": "Error al cargar los súper admins.",
+    "notAuthorized": "Se requiere acceso de súper admin."
   }
 }

@@ -1,4 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
+import {
+  readActiveAccountCookieClient,
+  type ResolvedAccount,
+} from "@/lib/auth/active-account";
 
 /**
  * Shared media-upload helper for Supabase Storage buckets that use the
@@ -90,19 +94,20 @@ export async function uploadAccountMedia(
     throw new Error("Not signed in.");
   }
 
-  // Resolve account_id so the path is account-scoped (matches the
-  // bucket's RLS write policy from migration 020/023). User-scoped
-  // paths would be rejected.
-  const { data: profile, error: profileErr } = await supabase
-    .from("profiles")
-    .select("account_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (profileErr || !profile?.account_id) {
+  // Resolve the caller's *active* account (migration 054) so the path
+  // matches the bucket's RLS write policy for whichever company is
+  // currently active, not just the caller's home account — a
+  // mismatched segment is silently rejected by RLS.
+  const { data: resolved, error: resolveErr } = (await supabase
+    .rpc("resolve_active_account", {
+      p_requested_account_id: readActiveAccountCookieClient(),
+    })
+    .maybeSingle()) as { data: ResolvedAccount | null; error: unknown };
+  if (resolveErr || !resolved?.account_id) {
     throw new Error("Could not resolve your account.");
   }
 
-  const path = buildMediaPath(profile.account_id as string, file.name);
+  const path = buildMediaPath(resolved.account_id, file.name);
   const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, {
     cacheControl: "3600",
     upsert: false,

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { getFlowTemplate } from '@/lib/flows/templates'
@@ -14,30 +13,24 @@ import { getFlowTemplate } from '@/lib/flows/templates'
  * routes themselves are open.
  */
 
-async function requireUser(): Promise<
-  | { ok: true; userId: string; supabase: Awaited<ReturnType<typeof createClient>> }
-  | { ok: false; status: number; body: { error: string } }
-> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return { ok: false, status: 401, body: { error: 'Unauthorized' } }
-  }
-  return { ok: true, userId: user.id, supabase }
-}
-
 export async function GET() {
-  const guard = await requireUser()
-  if (!guard.ok) {
-    return NextResponse.json(guard.body, { status: guard.status })
+  // Resolves the caller's *active* account (migration 054). RLS alone
+  // would still restrict a plain unfiltered SELECT to accounts the
+  // caller belongs to, but a multi-account owner belongs to more than
+  // one — an explicit accountId filter is what keeps this scoped to
+  // just the company currently active, not every company they own.
+  let ctx
+  try {
+    ctx = await requireRole('viewer')
+  } catch (err) {
+    return toErrorResponse(err)
   }
-  const { supabase } = guard
+  const { supabase, accountId } = ctx
 
   const { data, error } = await supabase
     .from('flows')
     .select('*')
+    .eq('account_id', accountId)
     .order('created_at', { ascending: false })
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -48,34 +41,16 @@ export async function GET() {
 export async function POST(request: Request) {
   // Creating a flow is a write — the RLS flows_insert policy requires
   // `agent`, but this route inserts via the service-role client which
-  // bypasses RLS, so the role must be enforced here.
+  // bypasses RLS, so the role must be enforced here. Resolves the
+  // caller's *active* account too, so the new flow lands in whichever
+  // company is currently active, not their home account.
+  let ctx
   try {
-    await requireRole('agent')
+    ctx = await requireRole('agent')
   } catch (err) {
     return toErrorResponse(err)
   }
-
-  const guard = await requireUser()
-  if (!guard.ok) {
-    return NextResponse.json(guard.body, { status: guard.status })
-  }
-  const { userId, supabase } = guard
-
-  // Resolve the caller's account_id — `flows.account_id` is NOT NULL
-  // post-017, so an INSERT without it trips the not-null constraint
-  // even though the admin client below bypasses RLS.
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('account_id')
-    .eq('user_id', userId)
-    .single()
-  const accountId = profile?.account_id as string | undefined
-  if (!accountId) {
-    return NextResponse.json(
-      { error: 'Your profile is not linked to an account.' },
-      { status: 403 },
-    )
-  }
+  const { userId, accountId } = ctx
 
   const body = (await request.json().catch(() => null)) as
     | {

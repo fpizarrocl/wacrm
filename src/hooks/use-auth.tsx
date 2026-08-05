@@ -20,6 +20,11 @@ import {
   isAccountRole,
   type AccountRole,
 } from "@/lib/auth/roles";
+import {
+  readActiveAccountCookieClient,
+  writeActiveAccountCookie,
+  type ResolvedAccount,
+} from "@/lib/auth/active-account";
 
 interface Profile {
   id: string;
@@ -43,6 +48,16 @@ interface AccountSummary {
   /** Default deal currency (ISO-4217). NOT NULL DEFAULT 'USD' in the
    *  DB (migration 021); narrowed to DEFAULT_CURRENCY when absent. */
   default_currency: string;
+}
+
+/** One entry in the account switcher (migration 054) — every account
+ *  the caller can access: their home account plus any extra
+ *  memberships (owner/platform-admin only; see list_my_accounts()). */
+export interface AccountListEntry {
+  id: string;
+  name: string;
+  role: AccountRole;
+  isHome: boolean;
 }
 
 interface AuthContextValue {
@@ -76,14 +91,36 @@ interface AuthContextValue {
   // After the profile resolves they're guaranteed to be set,
   // because migration 017 made `account_id` / `account_role`
   // NOT NULL on `profiles`.
+  //
+  // Since migration 054 these reflect the *active* account, not
+  // necessarily the caller's home one — an owner/platform admin who
+  // switched companies sees that company's id/role/name/currency
+  // here, matching what the server resolves via
+  // `getCurrentAccount()`/`resolve_active_account` for the same
+  // request. Regular single-account users never notice a difference:
+  // active === home always.
   // ----------------------------------------------------------
 
-  /** Account id the current user belongs to. Null while loading. */
+  /** Active account id (see note above). Null while loading. */
   accountId: string | null;
-  /** Role within that account. Null while loading. */
+  /** Caller's role within the active account. Null while loading. */
   accountRole: AccountRole | null;
-  /** Lightweight account meta — id + name + default_currency. Null while loading. */
+  /** Lightweight active-account meta — id + name + default_currency. Null while loading. */
   account: AccountSummary | null;
+  /** Every account the caller can access — their home account plus
+   *  any extra memberships (owner/platform-admin only). A single
+   *  entry for everyone else. Empty while loading. */
+  accounts: AccountListEntry[];
+  /** True for a platform admin (migration 054) — can browse/enter any
+   *  account in the instance via /admin, not just ones they own. */
+  isPlatformAdmin: boolean;
+  /** Switch the active account: writes the active_account_id cookie
+   *  and reloads so every server-rendered/API-backed surface picks up
+   *  the new scope. A no-op target (not in `accounts`, and the caller
+   *  isn't a platform admin) is silently corrected back to home on
+   *  the next request by `resolve_active_account` — this never grants
+   *  access it shouldn't, it can just fail to switch. */
+  switchAccount: (accountId: string) => void;
   /** Account default deal currency. Falls back to DEFAULT_CURRENCY
    *  while loading or when no account is resolved, so callers can use
    *  it unconditionally. */
@@ -114,7 +151,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  // Active-account state (migration 054) — see the AuthContextValue
+  // doc comments. `accountRole` here is the caller's EFFECTIVE role
+  // for the active account, which for a platform-admin viewing an
+  // account they don't otherwise belong to is 'owner' (server-side
+  // parity with resolve_active_account's own admin branch).
   const [account, setAccount] = useState<AccountSummary | null>(null);
+  const [accountRole, setAccountRole] = useState<AccountRole | null>(null);
+  const [accounts, setAccounts] = useState<AccountListEntry[]>([]);
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   // Tracked separately from `loading`. The session settles fast (one
   // local cookie read); the profile fetch crosses the network and
@@ -155,50 +200,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data) {
-        // Load the account with a plain lookup by id instead of an
-        // embedded FK join. The embed (`account:accounts!inner(...)`)
-        // forces PostgREST to resolve the profiles.account_id →
-        // accounts.id relationship from its schema cache; a stale cache
-        // (common right after a migration adds the FK) makes it fail
-        // hard with PGRST200 and blanks the whole profile — the user
-        // then loses account context everywhere (issue #294). A point
-        // lookup by id needs no relationship inference, so the profile
-        // (with account_id / account_role) still resolves even if the
-        // account name lookup itself can't.
-        let accountRow: AccountSummary | null = null;
-        if (data.account_id) {
-          const { data: account, error: accountErr } = await supabase
-            .from("accounts")
-            // default_currency added in migration 021; narrowed to the
-            // USD fallback below for older schemas where it reads null.
-            .select("id, name, default_currency")
-            .eq("id", data.account_id)
-            .maybeSingle();
-          if (accountErr) {
-            console.error("[AuthProvider] fetchAccount error:", {
-              message: accountErr.message,
-              details: accountErr.details,
-              hint: accountErr.hint,
-              code: accountErr.code,
-            });
-          } else if (account) {
-            accountRow = {
-              id: account.id,
-              name: account.name,
-              default_currency: account.default_currency ?? DEFAULT_CURRENCY,
-            };
-          }
-        }
-
-        // Narrow the DB enum into our AccountRole union. The DB
-        // constraint should make this unconditional, but a future
-        // migration that broadens the enum without updating TS would
-        // otherwise crash here — fall back to null and let UI gates
-        // treat the caller as least-privileged.
-        const accountRole = isAccountRole(data.account_role)
-          ? data.account_role
-          : null;
-
         setProfile({
           id: data.id,
           full_name: data.full_name,
@@ -211,9 +212,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // opt-ins, which is the safe default for any future beta gate.
           beta_features: data.beta_features ?? [],
           account_id: data.account_id ?? null,
-          account_role: accountRole,
+          account_role: isAccountRole(data.account_role) ? data.account_role : null,
         });
-        setAccount(accountRow);
+
+        // Active-account resolution (migration 054) — mirrors the
+        // server's getCurrentAccount()/resolve_active_account exactly,
+        // reading the same cookie, so client and server never scope to
+        // different accounts for the same request. Fired in parallel
+        // with the switcher list + platform-admin flag; all three are
+        // no-ops (empty/false) for the common single-account case.
+        const [activeRes, accountsRes, adminRes] = (await Promise.all([
+          supabase
+            .rpc("resolve_active_account", {
+              p_requested_account_id: readActiveAccountCookieClient(),
+            })
+            .maybeSingle(),
+          supabase.rpc("list_my_accounts"),
+          supabase.rpc("is_platform_admin"),
+        ])) as [
+          { data: ResolvedAccount | null; error: unknown },
+          {
+            data:
+              | { account_id: string; account_name: string; role: string; is_home: boolean }[]
+              | null;
+            error: unknown;
+          },
+          { data: boolean | null; error: unknown },
+        ];
+
+        if (activeRes.error) {
+          console.error("[AuthProvider] resolve_active_account error:", activeRes.error);
+          setAccount(null);
+          setAccountRole(null);
+        } else if (activeRes.data) {
+          setAccount({
+            id: activeRes.data.account_id,
+            name: activeRes.data.account_name,
+            default_currency: activeRes.data.default_currency ?? DEFAULT_CURRENCY,
+          });
+          // Same defensive narrowing as account_role above.
+          setAccountRole(
+            isAccountRole(activeRes.data.effective_role) ? activeRes.data.effective_role : null,
+          );
+        }
+
+        if (accountsRes.error) {
+          console.error("[AuthProvider] list_my_accounts error:", accountsRes.error);
+          setAccounts([]);
+        } else {
+          setAccounts(
+            (accountsRes.data ?? [])
+              .filter((row) => isAccountRole(row.role))
+              .map((row) => ({
+                id: row.account_id,
+                name: row.account_name,
+                role: row.role as AccountRole,
+                isHome: row.is_home,
+              })),
+          );
+        }
+
+        if (adminRes.error) {
+          console.error("[AuthProvider] is_platform_admin error:", adminRes.error);
+          setIsPlatformAdmin(false);
+        } else {
+          setIsPlatformAdmin(adminRes.data === true);
+        }
       } else {
         lastFetchedUserIdRef.current = null;
       }
@@ -287,6 +351,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastFetchedUserIdRef.current = null;
         setProfile(null);
         setAccount(null);
+        setAccountRole(null);
+        setAccounts([]);
+        setIsPlatformAdmin(false);
         setProfileLoading(false);
       }
 
@@ -306,7 +373,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setProfile(null);
     setAccount(null);
+    setAccountRole(null);
+    setAccounts([]);
+    setIsPlatformAdmin(false);
     window.location.href = "/login";
+  }, []);
+
+  // Switch the active account (migration 054) — see the doc comment
+  // on AuthContextValue.switchAccount. No server round trip needed:
+  // resolve_active_account re-validates on every subsequent request
+  // regardless of what this cookie claims, exactly like the language
+  // switcher's NEXT_LOCALE write.
+  const switchAccount = useCallback((nextAccountId: string) => {
+    writeActiveAccountCookie(nextAccountId);
+    window.location.reload();
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -314,15 +394,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchProfile(user.id);
   }, [user?.id, fetchProfile]);
 
-  // Derive the role booleans once per profile change rather than on
-  // every consumer render. Cheap regardless, but the memo also gives
-  // each derived value a stable identity for React.memo / useEffect
-  // dependencies downstream.
+  // Derive the role booleans once per active-account-role change
+  // rather than on every consumer render. Cheap regardless, but the
+  // memo also gives each derived value a stable identity for
+  // React.memo / useEffect dependencies downstream.
   const derived = useMemo(() => {
-    const role = profile?.account_role ?? null;
+    const role = accountRole;
     return {
       accountRole: role,
-      accountId: profile?.account_id ?? null,
+      accountId: account?.id ?? null,
       isOwner: role === "owner",
       isAdmin: role === "admin",
       isAgent: role === "agent",
@@ -331,7 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
     };
-  }, [profile?.account_role, profile?.account_id]);
+  }, [accountRole, account?.id]);
 
   return (
     <AuthContext.Provider
@@ -343,6 +423,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         refreshProfile,
         account,
+        accounts,
+        isPlatformAdmin,
+        switchAccount,
         defaultCurrency: account?.default_currency ?? DEFAULT_CURRENCY,
         ...derived,
       }}
@@ -373,6 +456,9 @@ export function useAuth(): AuthContextValue {
       },
       refreshProfile: async () => {},
       account: null,
+      accounts: [],
+      isPlatformAdmin: false,
+      switchAccount: () => {},
       defaultCurrency: DEFAULT_CURRENCY,
       accountId: null,
       accountRole: null,

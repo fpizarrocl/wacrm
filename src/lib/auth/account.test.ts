@@ -1,53 +1,26 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// getCurrentAccount resolves the caller's account context. The
-// regression this file guards (issue #294): account loading must NOT
-// depend on a PostgREST embedded FK join (`accounts!inner`), because a
-// stale schema cache makes that embed fail hard and blanks the whole
-// context. It must instead read the profile and then the account with
-// two plain point queries.
+// getCurrentAccount resolves the caller's *active* account context
+// (migration 054) via the `resolve_active_account` RPC — a single
+// round trip that reads the `active_account_id` cookie (validated as
+// a UUID before being forwarded) and safely falls back to the
+// caller's home account for anything invalid/unauthorized. This
+// replaced the old two-query (`profiles` then `accounts`) pattern
+// entirely, so the RPC call itself is what these tests assert on.
 
-// ------------------------------------------------------------
-// Chainable Supabase query-builder mock. Each `.from(table)` hands back
-// a thenable builder pre-loaded with the result queued for that table,
-// so we can assert which tables were queried and with what filters.
-// ------------------------------------------------------------
-interface BuilderCall {
-  table: string;
-  columns?: string;
-  eqArgs: [string, unknown][];
+interface RpcCall {
+  fn: string;
+  args: unknown;
 }
 
 function makeClient(opts: {
   user: { id: string } | null;
   userErr?: unknown;
-  byTable: Record<string, { data: unknown; error: unknown }>;
+  rpcResult?: { data: unknown; error: unknown };
 }) {
-  const calls: BuilderCall[] = [];
-
-  const from = (table: string) => {
-    const call: BuilderCall = { table, eqArgs: [] };
-    calls.push(call);
-    const builder = {
-      select(columns: string) {
-        call.columns = columns;
-        return builder;
-      },
-      eq(col: string, val: unknown) {
-        call.eqArgs.push([col, val]);
-        return builder;
-      },
-      maybeSingle() {
-        return Promise.resolve(
-          opts.byTable[table] ?? { data: null, error: null },
-        );
-      },
-    };
-    return builder;
-  };
-
+  const rpcCalls: RpcCall[] = [];
   return {
-    calls,
+    rpcCalls,
     client: {
       auth: {
         getUser: () =>
@@ -56,7 +29,13 @@ function makeClient(opts: {
             error: opts.userErr ?? null,
           }),
       },
-      from,
+      rpc: (fn: string, args: unknown) => {
+        rpcCalls.push({ fn, args });
+        return {
+          maybeSingle: () =>
+            Promise.resolve(opts.rpcResult ?? { data: null, error: null }),
+        };
+      },
     },
   };
 }
@@ -64,6 +43,11 @@ function makeClient(opts: {
 const createClient = vi.fn();
 vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClient(),
+}));
+
+const cookiesGet = vi.fn();
+vi.mock("next/headers", () => ({
+  cookies: () => Promise.resolve({ get: cookiesGet }),
 }));
 
 const { getCurrentAccount, UnauthorizedError, ForbiddenError } = await import(
@@ -74,17 +58,19 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+const RESOLVED = {
+  account_id: "acct-1",
+  account_name: "Acme",
+  effective_role: "owner",
+  default_currency: "USD",
+};
+
 describe("getCurrentAccount", () => {
-  it("resolves context via a plain accounts lookup, not an embedded join", async () => {
-    const { client, calls } = makeClient({
+  it("resolves context via resolve_active_account, with no cookie set", async () => {
+    cookiesGet.mockReturnValue(undefined);
+    const { client, rpcCalls } = makeClient({
       user: { id: "user-1" },
-      byTable: {
-        profiles: {
-          data: { account_id: "acct-1", account_role: "owner" },
-          error: null,
-        },
-        accounts: { data: { id: "acct-1", name: "Acme" }, error: null },
-      },
+      rpcResult: { data: RESOLVED, error: null },
     });
     createClient.mockReturnValue(client);
 
@@ -96,28 +82,53 @@ describe("getCurrentAccount", () => {
       role: "owner",
       account: { id: "acct-1", name: "Acme" },
     });
+    expect(rpcCalls).toEqual([
+      { fn: "resolve_active_account", args: { p_requested_account_id: null } },
+    ]);
+  });
 
-    // Two queries: profiles by user_id, then accounts by id. Neither
-    // selects an embedded relationship — the regression guard.
-    expect(calls.map((c) => c.table)).toEqual(["profiles", "accounts"]);
-    expect(calls[0].columns).not.toMatch(/accounts!/);
-    expect(calls[0].eqArgs).toEqual([["user_id", "user-1"]]);
-    expect(calls[1].columns).not.toMatch(/accounts!/);
-    expect(calls[1].eqArgs).toEqual([["id", "acct-1"]]);
+  it("forwards a valid active_account_id cookie as the requested account", async () => {
+    const uuid = "11111111-1111-1111-1111-111111111111";
+    cookiesGet.mockReturnValue({ value: uuid });
+    const { client, rpcCalls } = makeClient({
+      user: { id: "user-1" },
+      rpcResult: {
+        data: { ...RESOLVED, account_id: uuid, account_name: "Other Co" },
+        error: null,
+      },
+    });
+    createClient.mockReturnValue(client);
+
+    await getCurrentAccount();
+
+    expect(rpcCalls).toEqual([
+      { fn: "resolve_active_account", args: { p_requested_account_id: uuid } },
+    ]);
+  });
+
+  it("ignores a malformed cookie value instead of forwarding it", async () => {
+    cookiesGet.mockReturnValue({ value: "not-a-uuid; DROP TABLE accounts" });
+    const { client, rpcCalls } = makeClient({
+      user: { id: "user-1" },
+      rpcResult: { data: RESOLVED, error: null },
+    });
+    createClient.mockReturnValue(client);
+
+    await getCurrentAccount();
+
+    expect(rpcCalls[0].args).toEqual({ p_requested_account_id: null });
   });
 
   it("throws UnauthorizedError when there is no session", async () => {
-    const { client } = makeClient({ user: null, byTable: {} });
+    const { client } = makeClient({ user: null });
     createClient.mockReturnValue(client);
     await expect(getCurrentAccount()).rejects.toBeInstanceOf(UnauthorizedError);
   });
 
-  it("maps a profiles query error to 'Could not load account context'", async () => {
+  it("maps an RPC error to 'Could not load account context'", async () => {
     const { client } = makeClient({
       user: { id: "user-1" },
-      byTable: {
-        profiles: { data: null, error: { code: "PGRST200" } },
-      },
+      rpcResult: { data: null, error: { code: "PGRST200" } },
     });
     createClient.mockReturnValue(client);
     await expect(getCurrentAccount()).rejects.toThrow(
@@ -125,52 +136,25 @@ describe("getCurrentAccount", () => {
     );
   });
 
-  it("maps an accounts query error to 'Could not load account context'", async () => {
-    // The exact #294 shape if the embed were still in play, but now on
-    // the decoupled accounts lookup: profile resolves, account read errors.
+  it("rejects when resolve_active_account resolves no account at all", async () => {
     const { client } = makeClient({
       user: { id: "user-1" },
-      byTable: {
-        profiles: {
-          data: { account_id: "acct-1", account_role: "admin" },
-          error: null,
-        },
-        accounts: { data: null, error: { code: "PGRST200" } },
-      },
+      rpcResult: { data: null, error: null },
+    });
+    createClient.mockReturnValue(client);
+    await expect(getCurrentAccount()).rejects.toThrow(
+      "Profile is not linked to an account",
+    );
+  });
+
+  it("rejects an unrecognized effective_role", async () => {
+    const { client } = makeClient({
+      user: { id: "user-1" },
+      rpcResult: { data: { ...RESOLVED, effective_role: "superuser" }, error: null },
     });
     createClient.mockReturnValue(client);
     const err = await getCurrentAccount().catch((e) => e);
     expect(err).toBeInstanceOf(ForbiddenError);
-    expect(err.message).toBe("Could not load account context");
-  });
-
-  it("rejects a profile not linked to an account", async () => {
-    const { client } = makeClient({
-      user: { id: "user-1" },
-      byTable: {
-        profiles: { data: { account_id: null, account_role: null }, error: null },
-      },
-    });
-    createClient.mockReturnValue(client);
-    await expect(getCurrentAccount()).rejects.toThrow(
-      "Profile is not linked to an account",
-    );
-  });
-
-  it("rejects an account_id that resolves to no readable account", async () => {
-    const { client } = makeClient({
-      user: { id: "user-1" },
-      byTable: {
-        profiles: {
-          data: { account_id: "acct-1", account_role: "viewer" },
-          error: null,
-        },
-        accounts: { data: null, error: null },
-      },
-    });
-    createClient.mockReturnValue(client);
-    await expect(getCurrentAccount()).rejects.toThrow(
-      "Profile is not linked to an account",
-    );
+    expect(err.message).toBe("Unknown account role: superuser");
   });
 });

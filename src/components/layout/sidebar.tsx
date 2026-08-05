@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useTotalUnread } from "@/hooks/use-total-unread";
+import { AccountSwitcher } from "./account-switcher";
 import {
   Bell,
   Bot,
@@ -17,6 +18,7 @@ import {
   Radio,
   Settings,
   Shield,
+  ShieldAlert,
   User,
   UserCog,
   Users,
@@ -129,7 +131,8 @@ export function Sidebar({
 }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+  const { profile, profileLoading, account, accountRole, accounts, isPlatformAdmin, signOut } =
+    useAuth();
   const totalUnread = useTotalUnread();
   // Only surface the account-name strip when it actually carries
   // information. A solo user's personal account is named after them
@@ -139,10 +142,14 @@ export function Sidebar({
   // name diverges and the strip becomes meaningful — that's the signal
   // we gate on. Wait for the profile fetch to settle first, otherwise
   // the strip flashes in once the row resolves (a layout jump).
+  // Superseded by <AccountSwitcher> once there's more than one
+  // account to show — that component displays the active account's
+  // name itself, so the static strip would be redundant.
   const showAccountStrip =
     !profileLoading &&
     !!account?.name &&
-    account.name !== profile?.full_name;
+    account.name !== profile?.full_name &&
+    accounts.length <= 1;
 
   // Close the drawer when route changes — users opened it to navigate,
   // so once they pick a destination the drawer should get out of the way.
@@ -292,6 +299,22 @@ export function Sidebar({
           <div className="my-4 border-t border-border" />
 
           <ul className="flex flex-col gap-1">
+            {isPlatformAdmin && (
+              <li>
+                <Link
+                  href="/admin"
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                    pathname.startsWith("/admin")
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <ShieldAlert className="h-4 w-4" />
+                  {t("admin")}
+                </Link>
+              </li>
+            )}
             {bottomNavItems.map((item) => {
               const isActive = pathname.startsWith(item.href);
               return (
@@ -316,6 +339,9 @@ export function Sidebar({
 
         {/* User section */}
         <div className="shrink-0 border-t border-border p-3">
+          {/* Company switcher (migration 054) — renders nothing until
+              the caller has more than one account. */}
+          <AccountSwitcher />
           {/* Account name display — surfaced only when the account
               name differs from the user's own name (see
               `showAccountStrip`). For a default solo account the two

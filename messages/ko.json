@@ -31,6 +31,7 @@
     "flows": "플로우",
     "aiAgents": "AI 에이전트",
     "settings": "설정",
+    "admin": "관리자",
     "beta": "베타",
     "unreadConversations": "읽지 않은 대화 {count}건",
     "unreadNotifications": "읽지 않은 알림 {count}건",
@@ -1942,5 +1943,37 @@
     "categoryPrefix": "[{category}] ",
     "repliesCount": "{count, plural, =0 {🤖 AI가 응답 없이 인계했습니다.} =1 {🤖 AI가 응답 #회 후 인계했습니다.} other {🤖 AI가 응답 #회 후 인계했습니다.}}",
     "lastMessage": " 마지막 고객 메시지: “{quote}”"
+  },
+  "AccountSwitcher": {
+    "createCompany": "회사 만들기",
+    "createCompanyTitle": "새 회사 만들기",
+    "companyNamePlaceholder": "회사 이름",
+    "nameRequired": "회사 이름을 입력하세요.",
+    "createFailed": "회사를 만들지 못했습니다.",
+    "cancel": "취소",
+    "create": "만들기"
+  },
+  "Admin": {
+    "title": "관리자",
+    "description": "플랫폼 전체 도구입니다 — 플랫폼 관리자에게만 표시됩니다. 이 인스턴스의 모든 회사를 둘러보거나, 다른 사람에게 동일한 권한을 부여하거나 취소하세요.",
+    "accountsTitle": "회사",
+    "accountsDescription": "이 인스턴스의 모든 회사입니다.",
+    "searchPlaceholder": "회사 검색…",
+    "loading": "불러오는 중…",
+    "noAccounts": "검색과 일치하는 회사가 없습니다.",
+    "createdAt": "{date} 생성됨",
+    "enter": "입장",
+    "loadAccountsFailed": "회사를 불러오지 못했습니다.",
+    "adminsTitle": "플랫폼 관리자",
+    "adminsDescription": "여기 표시된 사람은 회원님과 동일한 루트 권한을 가지며, 이 인스턴스의 모든 회사를 둘러보고 입장할 수 있습니다.",
+    "emailPlaceholder": "이메일 주소",
+    "grant": "권한 부여",
+    "grantSuccess": "플랫폼 관리자 권한을 부여했습니다.",
+    "grantFailed": "권한을 부여하지 못했습니다.",
+    "revokeConfirm": "이 사용자의 플랫폼 관리자 권한을 취소할까요?",
+    "revokeSuccess": "플랫폼 관리자 권한을 취소했습니다.",
+    "revokeFailed": "권한을 취소하지 못했습니다.",
+    "loadAdminsFailed": "플랫폼 관리자를 불러오지 못했습니다.",
+    "notAuthorized": "플랫폼 관리자 권한이 필요합니다."
   }
 }

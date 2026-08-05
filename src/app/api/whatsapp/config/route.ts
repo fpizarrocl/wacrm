@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import {
@@ -7,28 +8,38 @@ import {
   verifyPhoneNumber,
 } from '@/lib/whatsapp/meta-api'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
+import {
+  ACTIVE_ACCOUNT_COOKIE,
+  isValidAccountIdCookieValue,
+  type ResolvedAccount,
+} from '@/lib/auth/active-account'
 
 /**
- * Resolve the caller's account_id from their profile. Inlined here
- * (rather than going through `@/lib/auth/account.getCurrentAccount`)
- * because the GET handler wants to return shaped 200s for every
- * non-auth failure mode, not throw — keeping the helper minimal lets
- * the existing response branches stay as-is.
+ * Resolve the caller's *active* account (migration 054) — never just
+ * their home account, so a multi-account owner/platform admin viewing
+ * or editing WhatsApp config while switched to a different company
+ * operates on that company's config, not the one they're homed in.
+ * Inlined here (rather than going through
+ * `@/lib/auth/account.getCurrentAccount`) because the GET handler
+ * wants to return shaped 200s for every non-auth failure mode, not
+ * throw — keeping the helper minimal lets the existing response
+ * branches stay as-is.
  *
- * Returns null if the user has no profile or no account; callers
- * should treat that the same as "not connected".
+ * Returns null if the user has no resolvable account; callers should
+ * treat that the same as "not connected".
  */
 async function resolveAccountId(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
 ): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('account_id')
-    .eq('user_id', userId)
-    .maybeSingle()
+  const requestedCookie = (await cookies()).get(ACTIVE_ACCOUNT_COOKIE)?.value
+  const requestedAccountId = isValidAccountIdCookieValue(requestedCookie)
+    ? requestedCookie
+    : null
+  const { data, error } = (await supabase
+    .rpc('resolve_active_account', { p_requested_account_id: requestedAccountId })
+    .maybeSingle()) as { data: ResolvedAccount | null; error: unknown }
   if (error || !data?.account_id) return null
-  return data.account_id as string
+  return data.account_id
 }
 
 // Lazy-initialised service-role client. We need it to detect a
@@ -73,7 +84,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accountId = await resolveAccountId(supabase, user.id)
+    const accountId = await resolveAccountId(supabase)
     if (!accountId) {
       return NextResponse.json(
         {
@@ -176,7 +187,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accountId = await resolveAccountId(supabase, user.id)
+    const accountId = await resolveAccountId(supabase)
     if (!accountId) {
       return NextResponse.json(
         { error: 'Your profile is not linked to an account.' },
@@ -454,7 +465,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accountId = await resolveAccountId(supabase, user.id)
+    const accountId = await resolveAccountId(supabase)
     if (!accountId) {
       return NextResponse.json(
         { error: 'Your profile is not linked to an account.' },
@@ -527,7 +538,7 @@ export async function DELETE() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const accountId = await resolveAccountId(supabase, user.id)
+    const accountId = await resolveAccountId(supabase)
     if (!accountId) {
       return NextResponse.json(
         { error: 'Your profile is not linked to an account.' },

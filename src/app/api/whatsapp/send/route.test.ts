@@ -115,6 +115,20 @@ function makeSupabaseMock() {
       })),
     },
     from: vi.fn((table: string) => builder(table)),
+    // getCurrentAccount() (src/lib/auth/account.ts) resolves the active
+    // account via this RPC rather than a direct `profiles` select.
+    rpc: vi.fn((fn: string) => {
+      if (fn === 'resolve_active_account') {
+        return {
+          maybeSingle: () =>
+            Promise.resolve({
+              data: { account_id: 'acct-1', account_name: 'Test Account', effective_role: 'agent' },
+              error: null,
+            }),
+        }
+      }
+      return { maybeSingle: () => Promise.resolve({ data: null, error: null }) }
+    }),
   }
 }
 
@@ -122,6 +136,13 @@ let supabaseMock = makeSupabaseMock()
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => supabaseMock),
+}))
+
+// getCurrentAccount() (src/lib/auth/account.ts) reads the
+// active_account_id cookie server-side — no cookie set in these tests,
+// so it always falls back to the mocked RPC's home-account result.
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({ get: () => undefined })),
 }))
 
 vi.mock('@/lib/flows/admin-client', () => ({

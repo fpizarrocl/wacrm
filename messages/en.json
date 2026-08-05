@@ -31,6 +31,7 @@
     "flows": "Flows",
     "aiAgents": "AI Agents",
     "settings": "Settings",
+    "admin": "Admin",
     "beta": "Beta",
     "unreadConversations": "{count} unread {count, plural, =1 {conversation} other {conversations}}",
     "unreadNotifications": "{count} unread {count, plural, =1 {notification} other {notifications}}",
@@ -1942,5 +1943,37 @@
     "categoryPrefix": "[{category}] ",
     "repliesCount": "{count, plural, =0 {🤖 AI agent handed off without replying.} =1 {🤖 AI agent handed off after # reply.} other {🤖 AI agent handed off after # replies.}}",
     "lastMessage": " Last customer message: “{quote}”"
+  },
+  "AccountSwitcher": {
+    "createCompany": "Create a company",
+    "createCompanyTitle": "Create a new company",
+    "companyNamePlaceholder": "Company name",
+    "nameRequired": "Give the company a name.",
+    "createFailed": "Couldn't create the company.",
+    "cancel": "Cancel",
+    "create": "Create"
+  },
+  "Admin": {
+    "title": "Admin",
+    "description": "Platform-wide tools — visible only to platform admins. Browse every company in this instance, or grant/revoke that same access for someone else.",
+    "accountsTitle": "Companies",
+    "accountsDescription": "Every company in this instance.",
+    "searchPlaceholder": "Search companies…",
+    "loading": "Loading…",
+    "noAccounts": "No companies match your search.",
+    "createdAt": "Created {date}",
+    "enter": "Enter",
+    "loadAccountsFailed": "Failed to load companies.",
+    "adminsTitle": "Platform admins",
+    "adminsDescription": "Anyone listed here has the same root access you do — able to browse and enter every company in this instance.",
+    "emailPlaceholder": "Email address",
+    "grant": "Grant access",
+    "grantSuccess": "Platform admin access granted.",
+    "grantFailed": "Couldn't grant access.",
+    "revokeConfirm": "Revoke this person's platform admin access?",
+    "revokeSuccess": "Platform admin access revoked.",
+    "revokeFailed": "Couldn't revoke access.",
+    "loadAdminsFailed": "Failed to load platform admins.",
+    "notAuthorized": "Platform admin access required."
   }
 }
