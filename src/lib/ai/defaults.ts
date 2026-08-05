@@ -1,4 +1,4 @@
-import type { AiProvider, QuickLink } from './types'
+import type { AiProvider, QuickLink, EscalationCategory } from './types'
 
 // ============================================================
 // Tunables + prompt scaffold for the AI reply assistant.
@@ -83,8 +83,25 @@ export function isAutoReplyWindowExpired(
  * Sentinel the model is instructed to emit (in auto-reply mode) when it
  * can't confidently help and a human should take over. Parsed and
  * stripped by `generateReply`.
+ *
+ * Optionally carries an escalation-category key — `[[HANDOFF:reclamos]]`
+ * instead of the bare `[[HANDOFF]]` — when the account has categories
+ * configured (`ai_configs.escalation_categories`, migration 052) and the
+ * request clearly matches one. A categorized handoff skips the model's
+ * own closing text entirely: `auto-reply.ts` sends that category's
+ * fixed `closingPhrase` verbatim and tags the contact, instead of
+ * trusting the model to reproduce admin-written text exactly.
+ *
+ * `handoffSentinel` builds the literal text (used in the system prompt
+ * example); `HANDOFF_SENTINEL_PATTERN` is the matching regex
+ * `generate.ts` uses to detect a handoff and extract the optional
+ * category — keep the two in sync if the format ever changes.
  */
 export const HANDOFF_SENTINEL = '[[HANDOFF]]'
+export function handoffSentinel(categoryKey?: string): string {
+  return categoryKey ? `[[HANDOFF:${categoryKey}]]` : HANDOFF_SENTINEL
+}
+export const HANDOFF_SENTINEL_PATTERN = /\[\[HANDOFF(?::([a-zA-Z0-9_-]+))?\]\]/
 
 /**
  * Sentinel the model is instructed to emit (in auto-reply mode, only
@@ -149,8 +166,13 @@ export function buildSystemPrompt(args: {
    *  above). Omitted/empty accounts get no instructions about them, so the
    *  model never emits a link sentinel it wasn't told about. */
   quickLinks?: QuickLink[]
+  /** Configured escalation categories (auto-reply mode only — see
+   *  HANDOFF_SENTINEL_PATTERN above). Omitted/empty accounts get no
+   *  instructions about them, so the model only ever emits the plain
+   *  bare-form handoff sentinel. */
+  escalationCategories?: EscalationCategory[]
 }): string {
-  const { userPrompt, mode, knowledge, quickLinks } = args
+  const { userPrompt, mode, knowledge, quickLinks, escalationCategories } = args
   const parts: string[] = [
     'You are a customer-messaging assistant for a business that uses a WhatsApp CRM. ' +
       'You are shown the recent WhatsApp conversation between the business (assistant) and a customer (user). ' +
@@ -172,6 +194,14 @@ export function buildSystemPrompt(args: {
       'You can hand the customer a tappable button that opens one of these links, when it is clearly useful to them (e.g. they ask how to get somewhere, or how to book): ' +
         quickLinks.map((l) => `key "${l.key}" = ${l.label}`).join('; ') +
         `. To send one, output exactly ${linkSentinel('<key>')} on its own, using exactly one of the keys above — never invent a key. You can emit more than one if more than one is relevant. Each is sent as its own message right after this reply, so keep your own text natural and don't also paste the raw URL.`,
+    )
+  }
+
+  if (mode === 'auto_reply' && escalationCategories && escalationCategories.length > 0) {
+    parts.push(
+      'Some reasons to hand off fall into specific categories, each with its own fixed closing message the system sends automatically: ' +
+        escalationCategories.map((c) => `key "${c.key}" = ${c.label}`).join('; ') +
+        `. When the customer's request clearly matches one of these, output exactly ${handoffSentinel('<key>')} on its own line, using exactly one of the keys above — never invent one — and write NOTHING else: no closing text of your own, the system sends the right one for you. For any other reason to hand off, use the plain ${HANDOFF_SENTINEL} as described above, with your own natural closing text.`,
     )
   }
 

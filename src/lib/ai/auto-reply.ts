@@ -13,6 +13,7 @@ import { sendSocialReplyText } from '@/lib/social/reply'
 import type { SocialChannel } from '@/lib/social/inbound'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
+import { addContactTagAndDispatch } from '@/lib/contacts/tag-events'
 
 export interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -156,6 +157,7 @@ export async function dispatchInboundToAiReply(
       mode: 'auto_reply',
       knowledge,
       quickLinks: config.quickLinks,
+      escalationCategories: config.escalationCategories,
     })
 
     // Best-effort typing indicator. Meta ties it to the most recent
@@ -188,7 +190,7 @@ export async function dispatchInboundToAiReply(
 
     const { definitions: tools, executeTool } = await loadAiTools(db, accountId)
 
-    const { text, handoff, linkKeys, usage } = await generateReply({
+    const { text, handoff, handoffCategory, linkKeys, usage } = await generateReply({
       config,
       systemPrompt,
       messages,
@@ -212,23 +214,53 @@ export async function dispatchInboundToAiReply(
 
     if (handoff || !text) {
       // The model can't (or shouldn't) answer — stop auto-replying on
-      // this thread and hand it to a human. We (a) send whatever
-      // customer-facing text the model wrote before the sentinel, if
-      // any — the system prompt asks it to keep the reply feeling
-      // human rather than going silent — (b) pause the bot here
+      // this thread and hand it to a human. A categorized handoff (the
+      // model matched one of the account's configured escalation
+      // categories — a bad/hallucinated key just falls through to the
+      // generic path below) sends that category's admin-written
+      // closing phrase VERBATIM instead of the model's own text — the
+      // whole point of a fixed phrase is that the model never gets to
+      // paraphrase it — and tags the contact so the topic is visible in
+      // the inbox without opening the chat.
+      const category = handoffCategory
+        ? config.escalationCategories.find((c) => c.key === handoffCategory)
+        : undefined
+      const replyText = category ? category.closingPhrase : text
+
+      // We (a) send the closing text — the category's fixed phrase, or
+      // whatever customer-facing text the model wrote before the plain
+      // sentinel (the system prompt asks it to keep the reply feeling
+      // human rather than going silent) — (b) pause the bot here
       // (sticky until re-enabled), (c) route the conversation to the
       // configured handoff agent — null leaves it in the shared queue —
       // and (d) leave a short internal note so whoever picks it up has
       // context. Assigning fires the `on_conversation_assigned` trigger,
       // which notifies the agent; the shared-queue case is notified
       // separately by the `ai_handoff_summary` trigger.
-      if (text) {
-        await sendReply(text)
+      if (replyText) {
+        await sendReply(replyText)
+      }
+
+      if (category) {
+        try {
+          await addContactTagAndDispatch({
+            db,
+            accountId,
+            contactId,
+            tagId: category.tagId,
+          })
+        } catch (err) {
+          console.warn(
+            `[ai auto-reply] failed to apply escalation tag for "${category.key}":`,
+            err instanceof Error ? err.message : err,
+          )
+        }
       }
 
       const summary = buildHandoffSummary({
         messages,
         replyCount: conv.ai_reply_count ?? 0,
+        categoryLabel: category?.label,
       })
       const update: Record<string, unknown> = {
         ai_autoreply_disabled: true,

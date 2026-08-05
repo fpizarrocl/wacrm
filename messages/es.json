@@ -1853,6 +1853,20 @@
       "keyPlaceholder": "id (uso interno del modelo)",
       "addLink": "Agregar enlace",
       "showKeys": "Mostrar ids (avanzado)"
+    },
+    "aiEscalationCategories": {
+      "title": "Categorías de escalamiento",
+      "description": "Temas específicos que el agente reconoce y deriva a un humano con un mensaje de cierre fijo que vos escribís — ej. Reclamos, Convenios, Eventos especiales. El tag correspondiente se aplica automáticamente al contacto.",
+      "empty": "Todavía no hay categorías de escalamiento.",
+      "noTags": "Todavía no tenés etiquetas.",
+      "noTagsLink": "Creá una en Configuración → Campos y etiquetas",
+      "labelPlaceholder": "p. ej. Reclamos",
+      "tagPlaceholder": "Elegí una etiqueta",
+      "closingPhrasePlaceholder": "p. ej. Gracias por los detalles — ya lo pasé a nuestro equipo y te van a contactar a la brevedad.",
+      "closingPhraseHint": "Se le manda al cliente tal cual está escrito — el agente nunca lo parafrasea.",
+      "keyPlaceholder": "id (uso interno del modelo)",
+      "addCategory": "Agregar categoría",
+      "showKeys": "Mostrar ids (avanzado)"
     }
   }
 }

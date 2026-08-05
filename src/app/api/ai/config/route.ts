@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   getCurrentAccount,
   requireRole,
@@ -13,7 +14,12 @@ import {
   DEFAULT_TEMPERATURE,
   clampAutoReplyResetHours,
 } from '@/lib/ai/defaults'
-import { AiError, type AiProvider, type QuickLink } from '@/lib/ai/types'
+import {
+  AiError,
+  type AiProvider,
+  type QuickLink,
+  type EscalationCategory,
+} from '@/lib/ai/types'
 import { INTERACTIVE_LIMITS } from '@/lib/whatsapp/meta-api'
 
 function bad(message: string) {
@@ -81,6 +87,84 @@ function parseQuickLinks(raw: unknown): QuickLink[] | { error: string } {
   return links
 }
 
+const ESCALATION_KEY_PATTERN = /^[a-zA-Z0-9_-]+$/
+const MAX_ESCALATION_CATEGORIES = 10
+
+/**
+ * Validate + normalize the account's escalation categories (Settings →
+ * Agente IA — see `src/lib/ai/auto-reply.ts` / `defaults.ts`). `key` is
+ * what the model references via the `[[HANDOFF:<key>]]` sentinel;
+ * `tagId` must reference an existing tag in this account (checked in
+ * one round-trip below — this is the one field `parseQuickLinks`
+ * doesn't need to touch the DB for); `closingPhrase` is sent to the
+ * customer verbatim, never written by the model, so it's required
+ * up front rather than falling back to anything.
+ *
+ * Absent `raw` → `[]`, same "leave it empty" default as quick links.
+ */
+async function parseEscalationCategories(
+  raw: unknown,
+  accountId: string,
+  supabase: SupabaseClient,
+): Promise<EscalationCategory[] | { error: string }> {
+  if (raw === undefined) return []
+  if (!Array.isArray(raw)) return { error: 'escalation_categories must be an array' }
+  if (raw.length > MAX_ESCALATION_CATEGORIES) {
+    return {
+      error: `escalation_categories allows at most ${MAX_ESCALATION_CATEGORIES} categories`,
+    }
+  }
+  const seen = new Set<string>()
+  const categories: EscalationCategory[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      return { error: 'Each escalation category must be an object' }
+    }
+    const record = item as Record<string, unknown>
+    const key = typeof record.key === 'string' ? record.key.trim() : ''
+    const label = typeof record.label === 'string' ? record.label.trim() : ''
+    const tagId = typeof record.tagId === 'string' ? record.tagId.trim() : ''
+    const closingPhrase =
+      typeof record.closingPhrase === 'string' ? record.closingPhrase.trim() : ''
+
+    if (!key || !ESCALATION_KEY_PATTERN.test(key)) {
+      return {
+        error: `Escalation category key "${key}" must be non-empty and contain only letters, numbers, "_" or "-"`,
+      }
+    }
+    if (seen.has(key)) return { error: `Duplicate escalation category key "${key}"` }
+    seen.add(key)
+
+    if (!label) return { error: 'Every escalation category needs a name' }
+    if (!tagId) return { error: `Escalation category "${label}" needs a tag` }
+    if (!closingPhrase) {
+      return { error: `Escalation category "${label}" needs a closing phrase` }
+    }
+
+    categories.push({ key, label, tagId, closingPhrase })
+  }
+
+  if (categories.length === 0) return categories
+
+  const { data: tags, error } = await supabase
+    .from('tags')
+    .select('id')
+    .eq('account_id', accountId)
+    .in(
+      'id',
+      categories.map((c) => c.tagId),
+    )
+  if (error) return { error: 'Could not verify escalation category tags' }
+  const validIds = new Set((tags ?? []).map((t) => t.id as string))
+  for (const c of categories) {
+    if (!validIds.has(c.tagId)) {
+      return { error: `Tag for escalation category "${c.label}" was not found in this account` }
+    }
+  }
+
+  return categories
+}
+
 /**
  * GET /api/ai/config
  *
@@ -97,7 +181,7 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, temperature, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, auto_reply_reset_hours, handoff_agent_id, api_key, embeddings_api_key, quick_links',
+        'provider, model, temperature, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, auto_reply_reset_hours, handoff_agent_id, api_key, embeddings_api_key, quick_links, escalation_categories',
       )
       .eq('account_id', accountId)
       .maybeSingle()
@@ -172,6 +256,14 @@ export async function POST(request: Request) {
     const quickLinksResult = parseQuickLinks(body.quick_links)
     if ('error' in quickLinksResult) return bad(quickLinksResult.error)
     const quickLinks = quickLinksResult
+
+    const escalationCategoriesResult = await parseEscalationCategories(
+      body.escalation_categories,
+      accountId,
+      supabase,
+    )
+    if ('error' in escalationCategoriesResult) return bad(escalationCategoriesResult.error)
+    const escalationCategories = escalationCategoriesResult
 
     // Handoff routing target for auto-reply. A non-empty string must be a
     // member of this account (else the conversation would be assigned to a
@@ -248,6 +340,7 @@ export async function POST(request: Request) {
           handoffAgentId: null,
           embeddingsApiKey: null,
           quickLinks: [],
+          escalationCategories: [],
         })
       } catch (err) {
         if (err instanceof AiError) {
@@ -289,6 +382,7 @@ export async function POST(request: Request) {
       auto_reply_max_per_conversation: maxPer,
       auto_reply_reset_hours: resetHours,
       quick_links: quickLinks,
+      escalation_categories: escalationCategories,
     }
     // Only touch the handoff target when the form actually sent the field,
     // so a partial save (e.g. flipping a toggle) doesn't wipe it.

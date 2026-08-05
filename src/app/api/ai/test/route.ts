@@ -81,6 +81,7 @@ export async function POST(request: Request) {
         handoffAgentId: null,
         embeddingsApiKey: null,
         quickLinks: [],
+        escalationCategories: [],
       })
     } catch (err) {
       if (err instanceof AiError) {

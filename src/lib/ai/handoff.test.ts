@@ -63,4 +63,15 @@ describe('buildHandoffSummary', () => {
     })
     expect(summary).toBe('🤖 AI agent handed off without replying.')
   })
+
+  it('prepends the category label when the handoff matched one', () => {
+    const summary = buildHandoffSummary({
+      messages: [{ role: 'user', content: 'quiero hacer un reclamo' }],
+      replyCount: 1,
+      categoryLabel: 'Reclamos',
+    })
+    expect(summary).toBe(
+      '[Reclamos] 🤖 AI agent handed off after 1 reply. Last customer message: “quiero hacer un reclamo”',
+    )
+  })
 })

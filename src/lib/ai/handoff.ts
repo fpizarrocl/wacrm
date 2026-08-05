@@ -15,13 +15,17 @@ const MAX_QUOTE_LEN = 160
  *    “can I speak to a manager about my refund?”"
  *
  * `replyCount` is the bot's auto-reply tally for the thread (0 when it
- * bailed on the very first inbound without answering).
+ * bailed on the very first inbound without answering). `categoryLabel`,
+ * when the handoff matched a configured escalation category (see
+ * HANDOFF_SENTINEL_PATTERN in defaults.ts), is prepended so whoever
+ * triages the queue sees the topic without opening the chat.
  */
 export function buildHandoffSummary(args: {
   messages: ChatMessage[]
   replyCount: number
+  categoryLabel?: string
 }): string {
-  const { messages, replyCount } = args
+  const { messages, replyCount, categoryLabel } = args
 
   const lastCustomer = [...messages]
     .reverse()
@@ -32,7 +36,8 @@ export function buildHandoffSummary(args: {
       ? 'without replying'
       : `after ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`
 
-  const base = `🤖 AI agent handed off ${replies}.`
+  const prefix = categoryLabel ? `[${categoryLabel}] ` : ''
+  const base = `${prefix}🤖 AI agent handed off ${replies}.`
 
   if (!lastCustomer) return base
 

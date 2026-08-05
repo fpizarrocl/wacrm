@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
   engineSendInteractiveCtaUrl: vi.fn(),
+  addContactTagAndDispatch: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -25,6 +26,9 @@ vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/flows/meta-send', () => ({
   engineSendText: h.engineSendText,
   engineSendInteractiveCtaUrl: h.engineSendInteractiveCtaUrl,
+}))
+vi.mock('@/lib/contacts/tag-events', () => ({
+  addContactTagAndDispatch: h.addContactTagAndDispatch,
 }))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
@@ -96,6 +100,7 @@ function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     handoffAgentId: null,
     embeddingsApiKey: null,
     quickLinks: [],
+    escalationCategories: [],
     ...overrides,
   }
 }
@@ -113,9 +118,15 @@ beforeEach(() => {
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
   h.retrieveKnowledge.mockResolvedValue([])
-  h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false, linkKeys: [] })
+  h.generateReply.mockResolvedValue({
+    text: 'Hello!',
+    handoff: false,
+    handoffCategory: null,
+    linkKeys: [],
+  })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
   h.engineSendInteractiveCtaUrl.mockResolvedValue({ whatsapp_message_id: 'm2' })
+  h.addContactTagAndDispatch.mockResolvedValue({ added: true, dispatched: true })
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
@@ -358,5 +369,90 @@ describe('dispatchInboundToAiReply — quick links', () => {
     h.engineSendInteractiveCtaUrl.mockRejectedValueOnce(new Error('Meta 500'))
     await expect(dispatchInboundToAiReply(ARGS)).resolves.toBeUndefined()
     expect(h.engineSendInteractiveCtaUrl).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('dispatchInboundToAiReply — escalation categories', () => {
+  const CATEGORIES = [
+    {
+      key: 'reclamos',
+      label: 'Reclamos',
+      tagId: 'tag-reclamos',
+      closingPhrase: 'Gracias por los detalles, ya lo derivamos a administración.',
+    },
+  ]
+
+  it('sends the fixed closing phrase (not the model text) and tags the contact', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ escalationCategories: CATEGORIES }))
+    h.generateReply.mockResolvedValue({
+      text: 'algo que el modelo no debería mandar',
+      handoff: true,
+      handoffCategory: 'reclamos',
+      linkKeys: [],
+    })
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'Gracias por los detalles, ya lo derivamos a administración.',
+      }),
+    )
+    expect(h.addContactTagAndDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: 'acct-1',
+        contactId: 'contact-1',
+        tagId: 'tag-reclamos',
+      }),
+    )
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('[Reclamos]')
+  })
+
+  it('falls back to the generic handoff when the model invents an unknown category key', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ escalationCategories: CATEGORIES }))
+    h.generateReply.mockResolvedValue({
+      text: 'Dejame ver eso.',
+      handoff: true,
+      handoffCategory: 'made-up',
+      linkKeys: [],
+    })
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Dejame ver eso.' }),
+    )
+    expect(h.addContactTagAndDispatch).not.toHaveBeenCalled()
+    expect(h.state.updatePayload?.ai_handoff_summary).not.toContain('[')
+  })
+
+  it('still hands off (without a tag) when tagging fails', async () => {
+    h.loadAiConfig.mockResolvedValue(aiConfig({ escalationCategories: CATEGORIES }))
+    h.generateReply.mockResolvedValue({
+      text: '',
+      handoff: true,
+      handoffCategory: 'reclamos',
+      linkKeys: [],
+    })
+    h.addContactTagAndDispatch.mockRejectedValueOnce(new Error('tag not found'))
+    await expect(dispatchInboundToAiReply(ARGS)).resolves.toBeUndefined()
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: 'Gracias por los detalles, ya lo derivamos a administración.',
+      }),
+    )
+    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
+  })
+
+  it('does not tag or touch closing text when the account has no categories configured', async () => {
+    h.generateReply.mockResolvedValue({
+      text: 'Dejame consultarlo.',
+      handoff: true,
+      handoffCategory: null,
+      linkKeys: [],
+    })
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.engineSendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Dejame consultarlo.' }),
+    )
+    expect(h.addContactTagAndDispatch).not.toHaveBeenCalled()
   })
 })

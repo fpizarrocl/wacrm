@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import type { AiConfig, QuickLink } from './types'
+import type { AiConfig, EscalationCategory, QuickLink } from './types'
 
 interface AiConfigRow {
   provider: 'openai' | 'anthropic' | 'gemini'
@@ -15,10 +15,11 @@ interface AiConfigRow {
   handoff_agent_id: string | null
   embeddings_api_key: string | null
   quick_links: QuickLink[] | null
+  escalation_categories: EscalationCategory[] | null
 }
 
 const CONFIG_COLUMNS =
-  'provider, model, api_key, temperature, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, auto_reply_reset_hours, handoff_agent_id, embeddings_api_key, quick_links'
+  'provider, model, api_key, temperature, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, auto_reply_reset_hours, handoff_agent_id, embeddings_api_key, quick_links, escalation_categories'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -85,6 +86,7 @@ export async function loadAiConfig(
     handoffAgentId: row.handoff_agent_id,
     embeddingsApiKey,
     quickLinks: row.quick_links ?? [],
+    escalationCategories: row.escalation_categories ?? [],
   }
 }
 

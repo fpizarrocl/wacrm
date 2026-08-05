@@ -1853,6 +1853,20 @@
       "keyPlaceholder": "id (used internally by the model)",
       "addLink": "Add link",
       "showKeys": "Show ids (advanced)"
+    },
+    "aiEscalationCategories": {
+      "title": "Escalation categories",
+      "description": "Specific topics the agent recognizes and hands off to a human with a fixed closing message you write — e.g. Complaints, Partnership inquiries, Special events. The matching tag is applied to the contact automatically.",
+      "empty": "No escalation categories yet.",
+      "noTags": "You don't have any tags yet.",
+      "noTagsLink": "Create one in Settings → Fields & tags",
+      "labelPlaceholder": "e.g. Complaints",
+      "tagPlaceholder": "Select a tag",
+      "closingPhrasePlaceholder": "e.g. Thank you for the details — I've passed this along to our team and they'll be in touch shortly.",
+      "closingPhraseHint": "Sent to the customer exactly as written — the agent never paraphrases this.",
+      "keyPlaceholder": "id (used internally by the model)",
+      "addCategory": "Add category",
+      "showKeys": "Show ids (advanced)"
     }
   }
 }

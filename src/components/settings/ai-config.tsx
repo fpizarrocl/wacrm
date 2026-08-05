@@ -30,6 +30,10 @@ import { AiKnowledgeCard } from './ai-knowledge';
 import { AiToolsCard } from './ai-tools';
 import { AiQuickLinksCard, type QuickLinkRow } from './ai-quick-links';
 import {
+  AiEscalationCategoriesCard,
+  type EscalationCategoryRow,
+} from './ai-escalation-categories';
+import {
   AI_PROVIDER_DEFAULT_MODEL,
   GEMINI_SUGGESTED_MODELS,
   DEFAULT_TEMPERATURE,
@@ -92,6 +96,9 @@ export function AiConfig() {
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
   const [quickLinks, setQuickLinks] = useState<QuickLinkRow[]>([]);
+  const [escalationCategories, setEscalationCategories] = useState<
+    EscalationCategoryRow[]
+  >([]);
 
   // Guard keyed on the account (not a bare boolean) so an in-place
   // account switch — ownership transfer, multi-account membership —
@@ -130,6 +137,9 @@ export function AiConfig() {
         setEmbeddingsKey(data.has_embeddings_key ? MASKED_KEY : '');
         setEmbeddingsKeyEdited(false);
         setQuickLinks(Array.isArray(data.quick_links) ? data.quick_links : []);
+        setEscalationCategories(
+          Array.isArray(data.escalation_categories) ? data.escalation_categories : [],
+        );
       }
     } catch {
       toast.error(t('loadFailed'));
@@ -178,6 +188,14 @@ export function AiConfig() {
     quick_links: quickLinks
       .map((l) => ({ key: l.key.trim(), label: l.label.trim(), url: l.url.trim() }))
       .filter((l) => l.label || l.url),
+    escalation_categories: escalationCategories
+      .map((c) => ({
+        key: c.key.trim(),
+        label: c.label.trim(),
+        tagId: c.tagId.trim(),
+        closingPhrase: c.closingPhrase.trim(),
+      }))
+      .filter((c) => c.label || c.tagId || c.closingPhrase),
   });
 
   const handleTest = async () => {
@@ -249,6 +267,7 @@ export function AiConfig() {
         setSystemPrompt('');
         setHandoffAgentId('');
         setQuickLinks([]);
+        setEscalationCategories([]);
       } else {
         const data = await res.json();
         toast.error(data.error ?? t('removeFailed'));
@@ -569,6 +588,12 @@ export function AiConfig() {
         <AiQuickLinksCard
           value={quickLinks}
           onChange={setQuickLinks}
+          disabled={disabled}
+        />
+
+        <AiEscalationCategoriesCard
+          value={escalationCategories}
+          onChange={setEscalationCategories}
           disabled={disabled}
         />
 

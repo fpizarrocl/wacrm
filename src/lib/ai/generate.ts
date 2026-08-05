@@ -8,7 +8,7 @@ import {
   type ToolDefinition,
 } from './types'
 import {
-  HANDOFF_SENTINEL,
+  HANDOFF_SENTINEL_PATTERN,
   LINK_SENTINEL_PATTERN,
   aiMaxProviderAttempts,
   aiRequestTimeoutMs,
@@ -101,17 +101,19 @@ export async function generateReply(args: GenerateArgs): Promise<GenerateResult>
 }
 
 /**
- * Split the raw model output into `{ text, handoff, usage }`. The
- * sentinel can appear alone or trailing a partial reply; either way we
- * treat the turn as a handoff and strip the marker from any remaining
- * text. `usage` is passed straight through (null when the provider
- * didn't report it).
+ * Split the raw model output into `{ text, handoff, handoffCategory,
+ * usage }`. The sentinel can appear alone or trailing a partial reply;
+ * either way we treat the turn as a handoff and strip the marker from
+ * any remaining text. `usage` is passed straight through (null when the
+ * provider didn't report it).
  */
 export function parseGeneration(
   raw: string,
   usage: AiUsage | null = null,
 ): GenerateResult {
-  const handoff = raw.includes(HANDOFF_SENTINEL)
+  const handoffMatch = raw.match(HANDOFF_SENTINEL_PATTERN)
+  const handoff = !!handoffMatch
+  const handoffCategory = handoffMatch?.[1] ?? null
 
   // Extract link keys before stripping — dedupe in order of appearance,
   // a repeated key would otherwise queue the same button twice.
@@ -126,15 +128,15 @@ export function parseGeneration(
   }
 
   const text = raw
-    .split(HANDOFF_SENTINEL)
-    .join('')
+    .replace(HANDOFF_SENTINEL_PATTERN, '')
     .replace(LINK_SENTINEL_PATTERN, '')
-    // The prompt asks the model to put a link sentinel "on its own"
-    // line, so removing it usually leaves behind a run of blank lines —
-    // collapse any run of 2+ line breaks down to a single blank line so
-    // the customer doesn't see a big gap where the marker used to be.
+    // The prompt asks the model to put a link/handoff sentinel "on its
+    // own" line, so removing it usually leaves behind a run of blank
+    // lines — collapse any run of 2+ line breaks down to a single blank
+    // line so the customer doesn't see a big gap where the marker used
+    // to be.
     .replace(/\n[ \t]*(?:\n[ \t]*)+/g, '\n\n')
     .trim()
 
-  return { text, handoff, linkKeys, usage }
+  return { text, handoff, handoffCategory, linkKeys, usage }
 }

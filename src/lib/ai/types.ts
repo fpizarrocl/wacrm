@@ -41,6 +41,10 @@ export interface AiConfig {
    *  may offer as tappable CTA-URL buttons — see LINK_SENTINEL in
    *  defaults.ts and src/lib/ai/auto-reply.ts. */
   quickLinks: QuickLink[]
+  /** Categorized handoffs (complaint, partnership inquiry, special
+   *  event...) — see HANDOFF_SENTINEL_PATTERN in defaults.ts and
+   *  src/lib/ai/auto-reply.ts. */
+  escalationCategories: EscalationCategory[]
 }
 
 /** One configured quick link — `key` is the stable id the model
@@ -50,6 +54,18 @@ export interface QuickLink {
   key: string
   label: string
   url: string
+}
+
+/** One configured escalation category — `key` is the stable id the
+ *  model references via the `[[HANDOFF:<key>]]` sentinel; `tagId`
+ *  (`tags.id`) gets applied to the contact on escalation;
+ *  `closingPhrase` is sent to the customer verbatim — the model never
+ *  writes its own text for a categorized handoff. */
+export interface EscalationCategory {
+  key: string
+  label: string
+  tagId: string
+  closingPhrase: string
 }
 
 /** One piece of a multimodal turn — plain text, an inlined image, or
@@ -130,6 +146,12 @@ export interface GenerateResult {
   text: string
   /** True when the model asked to hand off to a human (auto-reply mode). */
   handoff: boolean
+  /** The escalation category key from a `[[HANDOFF:<key>]]` sentinel,
+   *  or null for a plain `[[HANDOFF]]` (or no handoff at all). Doesn't
+   *  guarantee the key matches a configured category — the model can
+   *  hallucinate one, so callers must look it up and fall back to the
+   *  generic handoff when it doesn't resolve. */
+  handoffCategory: string | null
   /** Quick-link keys the model asked to send (auto-reply mode only —
    *  see LINK_SENTINEL in defaults.ts), in the order they appeared,
    *  deduplicated. Empty when no quick links are configured or emitted. */

@@ -1853,6 +1853,20 @@
       "keyPlaceholder": "id (모델 내부용)",
       "addLink": "링크 추가",
       "showKeys": "id 표시 (고급)"
+    },
+    "aiEscalationCategories": {
+      "title": "에스컬레이션 카테고리",
+      "description": "에이전트가 인식하고 직접 작성한 고정 마무리 메시지와 함께 사람에게 넘기는 특정 주제입니다 — 예: 불만 접수, 제휴 문의, 특별 행사. 해당 태그가 연락처에 자동으로 적용됩니다.",
+      "empty": "아직 에스컬레이션 카테고리가 없습니다.",
+      "noTags": "아직 태그가 없습니다.",
+      "noTagsLink": "설정 → 필드 및 태그에서 만들기",
+      "labelPlaceholder": "예: 불만 접수",
+      "tagPlaceholder": "태그 선택",
+      "closingPhrasePlaceholder": "예: 자세한 내용 감사합니다 — 담당팀에 전달했으며 곧 연락드리겠습니다.",
+      "closingPhraseHint": "작성한 그대로 고객에게 전송됩니다 — 에이전트는 이 문구를 절대 바꿔 쓰지 않습니다.",
+      "keyPlaceholder": "id (모델 내부용)",
+      "addCategory": "카테고리 추가",
+      "showKeys": "id 표시 (고급)"
     }
   }
 }
